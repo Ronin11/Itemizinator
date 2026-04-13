@@ -5,9 +5,9 @@ Itemizer - Process photos through Gemini and catalog to Google Sheets.
 Usage:
     python process.py <spreadsheet_id> <photos_dir>
 
-photos_dir should contain image files (jpg, png, heic, etc.).
-Each image is analyzed by Gemini to identify items, then results
-are written to the Google Sheet.
+photos_dir should contain image files (jpg, png, heic, etc.) or zip files.
+Each image is uploaded to Google Drive, analyzed by Gemini to identify items,
+then results (with photo URLs) are written to the Google Sheet.
 """
 
 import io
@@ -22,13 +22,22 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 from PIL import Image
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.file",
 ]
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".bmp", ".tiff", ".tif"}
+
+MIME_TYPES = {
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".png": "image/png", ".heic": "image/heic",
+    ".heif": "image/heif", ".webp": "image/webp",
+    ".bmp": "image/bmp", ".tiff": "image/tiff", ".tif": "image/tiff",
+}
 
 GEMINI_PROMPT = """You are helping catalog household items from an estate.
 Look at this photo and identify each distinct item you can see.
@@ -70,7 +79,6 @@ def get_google_creds():
         try:
             creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
         except ValueError:
-            # Token missing refresh_token or malformed — re-auth
             token_path.unlink()
             creds = None
 
@@ -115,6 +123,8 @@ def get_google_creds():
     return creds
 
 
+# ---- Files ----
+
 def extract_zips(photos_dir):
     """Extract any zip files found in the directory."""
     import zipfile
@@ -143,23 +153,54 @@ def get_image_files(photos_dir):
     return files
 
 
-MIME_TYPES = {
-    ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-    ".png": "image/png", ".heic": "image/heic",
-    ".heif": "image/heif", ".webp": "image/webp",
-    ".bmp": "image/bmp", ".tiff": "image/tiff", ".tif": "image/tiff",
-}
-
-
 def load_image(path):
     """Load an image file for Gemini. Returns PIL Image or raw bytes for HEIC."""
     suffix = path.suffix.lower()
     if suffix in (".heic", ".heif"):
-        # Gemini accepts raw HEIC — send as inline data
         data = path.read_bytes()
         return {"mime_type": MIME_TYPES[suffix], "data": data}
     return Image.open(path)
 
+
+# ---- Google Drive ----
+
+def create_drive_folder(drive, name):
+    """Create a folder in Drive and return its ID."""
+    metadata = {
+        "name": name,
+        "mimeType": "application/vnd.google-apps.folder",
+    }
+    folder = drive.files().create(body=metadata, fields="id").execute()
+    return folder["id"]
+
+
+def share_folder_public(drive, folder_id):
+    """Make a Drive folder viewable by anyone with the link."""
+    drive.permissions().create(
+        fileId=folder_id,
+        body={"type": "anyone", "role": "reader"},
+    ).execute()
+
+
+def upload_to_drive(drive, file_path, folder_id):
+    """Upload a file to Drive and return a direct image URL."""
+    suffix = file_path.suffix.lower()
+    mime_type = MIME_TYPES.get(suffix, "application/octet-stream")
+
+    metadata = {
+        "name": file_path.name,
+        "parents": [folder_id],
+    }
+    media = MediaFileUpload(str(file_path), mimetype=mime_type, resumable=True)
+    uploaded = drive.files().create(
+        body=metadata, media_body=media, fields="id"
+    ).execute()
+
+    file_id = uploaded["id"]
+    return f"https://lh3.googleusercontent.com/d/{file_id}"
+
+
+# ---- Gemini ----
 
 def analyze_image(model, image):
     """Send image to Gemini and get item descriptions."""
@@ -180,6 +221,8 @@ def analyze_image(model, image):
         print(f"  Response: {text[:200]}")
     return []
 
+
+# ---- Google Sheets ----
 
 def setup_sheet(sheets, spreadsheet_id):
     """Set up the header row in the spreadsheet."""
@@ -235,6 +278,8 @@ def append_rows(sheets, spreadsheet_id, rows):
     ).execute()
 
 
+# ---- Main ----
+
 def main():
     import argparse
 
@@ -263,10 +308,17 @@ def main():
 
     print(f"Found {len(image_files)} photos in {args.photos_dir}")
 
-    # Set up Google Sheets
+    # Set up Google APIs
     print("Authenticating with Google...")
     creds = get_google_creds()
     sheets = build("sheets", "v4", credentials=creds)
+    drive = build("drive", "v3", credentials=creds)
+
+    # Create a shared Drive folder for the photos
+    print("Creating Drive folder for photos...")
+    folder_id = create_drive_folder(drive, "Itemizer Photos")
+    share_folder_public(drive, folder_id)
+    print(f"  https://drive.google.com/drive/folders/{folder_id}")
 
     print("Setting up spreadsheet...")
     setup_sheet(sheets, args.spreadsheet_id)
@@ -279,6 +331,10 @@ def main():
         print(f"  [{i}/{len(image_files)}] {image_path.name}...", end=" ", flush=True)
 
         try:
+            # Upload to Drive first
+            photo_url = upload_to_drive(drive, image_path, folder_id)
+
+            # Analyze with Gemini
             image = load_image(image_path)
             items = analyze_image(model, image)
 
@@ -288,7 +344,7 @@ def main():
                     item.get("description", ""),
                     item.get("category", "Other"),
                     item.get("condition", ""),
-                    image_path.name,
+                    photo_url,
                     "",  # Claimed By
                     "",  # Priority
                     "",  # Notes
@@ -303,7 +359,7 @@ def main():
         # Rate limit: Gemini free tier is 15 RPM
         time.sleep(4)
 
-        # Batch write every 20 photos
+        # Batch write every 50 rows
         if len(rows) >= 50 or i == len(image_files):
             if rows:
                 append_rows(sheets, args.spreadsheet_id, rows)
