@@ -69,13 +69,13 @@ The site is a single HTML file that reads directly from the Google Sheet.
 
 **Option A - Local:**
 ```bash
-cd site
+cd docs
 python -m http.server 8000
 # Open http://localhost:8000?sheet=YOUR_SPREADSHEET_ID
 ```
 
 **Option B - Configure and host anywhere:**
-Edit `site/config.js` and set your `SHEET_ID` and `GOOGLE_CLIENT_ID`. Then host the `site/` folder anywhere (GitHub Pages, Netlify drop, etc.) — it's just static files.
+Edit `docs/config.js` and set your `SHEET_ID` and `GOOGLE_CLIENT_ID`. Then host the `docs/` folder anywhere (GitHub Pages, Netlify drop, etc.) — it's just static files.
 
 The spreadsheet must be shared as **"Anyone with the link can view"** for the website to read it.
 
