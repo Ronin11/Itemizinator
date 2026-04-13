@@ -438,8 +438,8 @@
         async function executeClaimWrite(rowIndex, shouldClaim) {
             const email = shouldClaim ? currentUser.email : "";
 
-            // Column G = "Claimed By" (column 7)
-            const range = `Sheet1!G${rowIndex}`;
+            // Column F = "Claimed By" (column 6)
+            const range = `Sheet1!F${rowIndex}`;
 
             try {
                 const resp = await fetch(
@@ -485,7 +485,7 @@
 
         // ---- Rendering ----
 
-        let currentFilters = { query: "", room: "", category: "", claimStatus: "" };
+        let currentFilters = { query: "", category: "", claimStatus: "" };
 
         function renderCurrentView() {
             if (allItems.length === 0) return;
@@ -493,7 +493,6 @@
         }
 
         function renderItems(items) {
-            const rooms = [...new Set(items.map(i => i.Room))].sort();
             const categories = [...new Set(items.map(i => i.Category))].sort();
             const totalClaimed = items.filter(i => i["Claimed By"]).length;
 
@@ -508,10 +507,6 @@
                 ${signInBanner}
                 <div class="controls">
                     <input type="text" id="search" placeholder="Search items..." value="${escapeHtml(currentFilters.query)}">
-                    <select id="room-filter">
-                        <option value="">All Rooms</option>
-                        ${rooms.map(r => `<option value="${escapeHtml(r)}" ${currentFilters.room === r ? "selected" : ""}>${escapeHtml(r)}</option>`).join("")}
-                    </select>
                     <select id="category-filter">
                         <option value="">All Categories</option>
                         ${categories.map(c => `<option value="${escapeHtml(c)}" ${currentFilters.category === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}
@@ -534,83 +529,67 @@
 
             const container = document.getElementById("items-container");
             const searchInput = document.getElementById("search");
-            const roomFilter = document.getElementById("room-filter");
             const categoryFilter = document.getElementById("category-filter");
             const claimFilter = document.getElementById("claim-filter");
             const stats = document.getElementById("stats");
 
             function filterAndRender() {
                 currentFilters.query = searchInput.value;
-                currentFilters.room = roomFilter.value;
                 currentFilters.category = categoryFilter.value;
                 currentFilters.claimStatus = claimFilter.value;
 
                 const query = currentFilters.query.toLowerCase();
 
                 let filtered = items.filter(item => {
-                    if (currentFilters.room && item.Room !== currentFilters.room) return false;
                     if (currentFilters.category && item.Category !== currentFilters.category) return false;
                     if (currentFilters.claimStatus === "claimed" && !item["Claimed By"]) return false;
                     if (currentFilters.claimStatus === "unclaimed" && item["Claimed By"]) return false;
                     if (currentFilters.claimStatus === "mine" && item["Claimed By"] !== currentUser?.email) return false;
                     if (query) {
-                        const searchable = `${item.Item} ${item.Description} ${item.Room} ${item.Category} ${item["Claimed By"]}`.toLowerCase();
+                        const searchable = `${item.Item} ${item.Description} ${item.Category} ${item["Claimed By"]}`.toLowerCase();
                         if (!searchable.includes(query)) return false;
                     }
                     return true;
                 });
 
-                const grouped = {};
-                for (const item of filtered) {
-                    if (!grouped[item.Room]) grouped[item.Room] = [];
-                    grouped[item.Room].push(item);
-                }
-
                 const claimed = filtered.filter(i => i["Claimed By"]).length;
                 stats.textContent = `Showing ${filtered.length} of ${items.length} items \u00b7 ${claimed} claimed \u00b7 ${filtered.length - claimed} available`;
 
-                container.innerHTML = Object.entries(grouped)
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([room, roomItems]) => `
-                        <div class="room-section">
-                            <h2>${escapeHtml(room)} (${roomItems.length})</h2>
-                            <div class="items-grid">
-                                ${roomItems.map(item => {
-                                    const isMine = currentUser && item["Claimed By"] === currentUser.email;
-                                    const isClaimed = !!item["Claimed By"];
-                                    const cardClass = isMine ? "mine" : (isClaimed ? "claimed" : "");
+                container.innerHTML = `
+                    <div class="items-grid">
+                        ${filtered.map(item => {
+                            const isMine = currentUser && item["Claimed By"] === currentUser.email;
+                            const isClaimed = !!item["Claimed By"];
+                            const cardClass = isMine ? "mine" : (isClaimed ? "claimed" : "");
 
-                                    let claimButton = "";
-                                    if (currentUser) {
-                                        if (!isClaimed) {
-                                            claimButton = `<button class="claim-btn claim" onclick="claimItem(${item._rowIndex}, true)">Claim</button>`;
-                                        } else if (isMine) {
-                                            claimButton = `<button class="claim-btn unclaim" onclick="claimItem(${item._rowIndex}, false)">Unclaim</button>`;
-                                        }
-                                    }
+                            let claimButton = "";
+                            if (currentUser) {
+                                if (!isClaimed) {
+                                    claimButton = `<button class="claim-btn claim" onclick="claimItem(${item._rowIndex}, true)">Claim</button>`;
+                                } else if (isMine) {
+                                    claimButton = `<button class="claim-btn unclaim" onclick="claimItem(${item._rowIndex}, false)">Unclaim</button>`;
+                                }
+                            }
 
-                                    return `
-                                        <div class="item-card ${cardClass}">
-                                            <div class="item-name">${escapeHtml(item.Item)}</div>
-                                            <div class="item-desc">${escapeHtml(item.Description)}</div>
-                                            <div class="item-meta">
-                                                <span class="tag tag-category">${escapeHtml(item.Category)}</span>
-                                                ${item.Condition ? `<span class="tag tag-condition">${escapeHtml(item.Condition)}</span>` : ""}
-                                            </div>
-                                            ${item["Photo Link"] ? `<a class="photo-link" href="${escapeHtml(item["Photo Link"])}" target="_blank">View Photo</a>` : ""}
-                                            ${isClaimed ? `<div class="item-claimed">${isMine ? "Claimed by you" : `Claimed by ${escapeHtml(item["Claimed By"])}`}</div>` : ""}
-                                            ${item.Notes ? `<div class="item-desc" style="margin-top:0.25rem"><em>${escapeHtml(item.Notes)}</em></div>` : ""}
-                                            ${claimButton}
-                                        </div>
-                                    `;
-                                }).join("")}
-                            </div>
-                        </div>
-                    `).join("");
+                            return `
+                                <div class="item-card ${cardClass}">
+                                    <div class="item-name">${escapeHtml(item.Item)}</div>
+                                    <div class="item-desc">${escapeHtml(item.Description)}</div>
+                                    <div class="item-meta">
+                                        <span class="tag tag-category">${escapeHtml(item.Category)}</span>
+                                        ${item.Condition ? `<span class="tag tag-condition">${escapeHtml(item.Condition)}</span>` : ""}
+                                    </div>
+                                    ${item["Photo Link"] ? `<a class="photo-link" href="${escapeHtml(item["Photo Link"])}" target="_blank">View Photo</a>` : ""}
+                                    ${isClaimed ? `<div class="item-claimed">${isMine ? "Claimed by you" : `Claimed by ${escapeHtml(item["Claimed By"])}`}</div>` : ""}
+                                    ${item.Notes ? `<div class="item-desc" style="margin-top:0.25rem"><em>${escapeHtml(item.Notes)}</em></div>` : ""}
+                                    ${claimButton}
+                                </div>
+                            `;
+                        }).join("")}
+                    </div>`;
             }
 
             searchInput.addEventListener("input", filterAndRender);
-            roomFilter.addEventListener("change", filterAndRender);
             categoryFilter.addEventListener("change", filterAndRender);
             claimFilter.addEventListener("change", filterAndRender);
 
