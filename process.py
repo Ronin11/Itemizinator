@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-Itemizer - Process Google Photos album through Gemini and catalog to Google Sheets.
+Itemizer - Process photos through Gemini and catalog to Google Sheets.
 
 Usage:
-    python process.py <spreadsheet_id> [--album-url <google_photos_share_url>]
+    python process.py <spreadsheet_id> <photos_dir>
 
-If no album URL is given, lists your Google Photos albums to choose from.
+photos_dir should contain image files (jpg, png, heic, etc.).
+Each image is analyzed by Gemini to identify items, then results
+are written to the Google Sheet.
 """
 
 import io
@@ -16,7 +18,6 @@ import time
 from pathlib import Path
 
 import google.generativeai as genai
-import requests as http_requests
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -24,11 +25,10 @@ from googleapiclient.discovery import build
 from PIL import Image
 
 SCOPES = [
-    "https://www.googleapis.com/auth/photoslibrary.readonly",
     "https://www.googleapis.com/auth/spreadsheets",
 ]
 
-PHOTOS_API_BASE = "https://photoslibrary.googleapis.com/v1"
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".bmp", ".tiff", ".tif"}
 
 GEMINI_PROMPT = """You are helping catalog household items from an estate.
 Look at this photo and identify each distinct item you can see.
@@ -67,7 +67,12 @@ def get_google_creds():
 
     creds = None
     if token_path.exists():
-        creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
+        try:
+            creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
+        except ValueError:
+            # Token missing refresh_token or malformed — re-auth
+            token_path.unlink()
+            creds = None
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
@@ -78,12 +83,10 @@ def get_google_creds():
                 print("Download it from Google Cloud Console > APIs & Credentials > OAuth 2.0 Client IDs")
                 print(f"Save it as: {creds_path}")
                 sys.exit(1)
-            # Load credentials - supports both "web" and "installed" client types
             creds_data = json.loads(creds_path.read_text())
             client_type = "web" if "web" in creds_data else "installed"
 
             if client_type == "web":
-                # Convert web client to installed format for InstalledAppFlow
                 web_config = creds_data["web"]
                 installed_config = {
                     "installed": {
@@ -112,166 +115,57 @@ def get_google_creds():
     return creds
 
 
-# ---- Google Photos ----
-
-def photos_auth_header(creds):
-    """Return auth header dict for Photos API requests."""
-    return {"Authorization": f"Bearer {creds.token}"}
-
-
-def list_shared_albums(creds):
-    """List shared albums the user has joined or owns."""
-    albums = []
-    page_token = None
-    while True:
-        params = {"pageSize": 50}
-        if page_token:
-            params["pageToken"] = page_token
-        resp = http_requests.get(
-            f"{PHOTOS_API_BASE}/sharedAlbums",
-            headers=photos_auth_header(creds),
-            params=params,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        albums.extend(data.get("sharedAlbums", []))
-        page_token = data.get("nextPageToken")
-        if not page_token:
-            break
-    return albums
+def extract_zips(photos_dir):
+    """Extract any zip files found in the directory."""
+    import zipfile
+    photos_path = Path(photos_dir)
+    for f in list(photos_path.iterdir()):
+        if f.is_file() and f.suffix.lower() == ".zip":
+            print(f"Extracting {f.name}...")
+            with zipfile.ZipFile(f, "r") as zf:
+                zf.extractall(photos_path)
+            f.unlink()
 
 
-def list_albums(creds):
-    """List the user's own albums."""
-    albums = []
-    page_token = None
-    while True:
-        params = {"pageSize": 50}
-        if page_token:
-            params["pageToken"] = page_token
-        resp = http_requests.get(
-            f"{PHOTOS_API_BASE}/albums",
-            headers=photos_auth_header(creds),
-            params=params,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        albums.extend(data.get("albums", []))
-        page_token = data.get("nextPageToken")
-        if not page_token:
-            break
-    return albums
+def get_image_files(photos_dir):
+    """Get all image files from a directory (recursively), sorted by name."""
+    photos_path = Path(photos_dir)
+    if not photos_path.is_dir():
+        print(f"ERROR: {photos_dir} is not a directory")
+        sys.exit(1)
+
+    extract_zips(photos_path)
+
+    files = []
+    for f in sorted(photos_path.rglob("*")):
+        if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS:
+            files.append(f)
+    return files
 
 
-def join_shared_album(creds, share_token):
-    """Join a shared album by its share token."""
-    resp = http_requests.post(
-        f"{PHOTOS_API_BASE}/sharedAlbums:join",
-        headers={**photos_auth_header(creds), "Content-Type": "application/json"},
-        json={"shareToken": share_token},
-    )
-    resp.raise_for_status()
-    return resp.json().get("album", {})
+MIME_TYPES = {
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".png": "image/png", ".heic": "image/heic",
+    ".heif": "image/heif", ".webp": "image/webp",
+    ".bmp": "image/bmp", ".tiff": "image/tiff", ".tif": "image/tiff",
+}
 
 
-def get_album_media(creds, album_id):
-    """Get all media items from an album."""
-    items = []
-    page_token = None
-    while True:
-        body = {"albumId": album_id, "pageSize": 100}
-        if page_token:
-            body["pageToken"] = page_token
-        resp = http_requests.post(
-            f"{PHOTOS_API_BASE}/mediaItems:search",
-            headers={**photos_auth_header(creds), "Content-Type": "application/json"},
-            json=body,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        items.extend(data.get("mediaItems", []))
-        page_token = data.get("nextPageToken")
-        if not page_token:
-            break
-    return items
+def load_image(path):
+    """Load an image file for Gemini. Returns PIL Image or raw bytes for HEIC."""
+    suffix = path.suffix.lower()
+    if suffix in (".heic", ".heif"):
+        # Gemini accepts raw HEIC — send as inline data
+        data = path.read_bytes()
+        return {"mime_type": MIME_TYPES[suffix], "data": data}
+    return Image.open(path)
 
-
-def download_photo(media_item):
-    """Download a photo from Google Photos and return as PIL Image."""
-    # Append =d to baseUrl for full resolution, =w1024-h1024 for manageable size
-    url = media_item["baseUrl"] + "=w1600-h1600"
-    resp = http_requests.get(url)
-    resp.raise_for_status()
-    return Image.open(io.BytesIO(resp.content))
-
-
-def find_album_by_url(creds, share_url):
-    """Try to find/join an album from a Google Photos share URL."""
-    # First, try listing shared albums to find a match
-    shared = list_shared_albums(creds)
-    for album in shared:
-        share_info = album.get("shareInfo", {})
-        if share_info.get("shareableUrl", "") in share_url or share_url in share_info.get("shareableUrl", ""):
-            return album
-
-    # Try listing own albums too
-    own = list_albums(creds)
-    for album in own:
-        if album.get("productUrl", "") and album["productUrl"] in share_url:
-            return album
-
-    # If not found, it might need to be joined first - ask user
-    print("Could not automatically find this album in your library.")
-    print("Please open the shared link in your browser and click 'Join' first,")
-    print("then run this script again.")
-    print()
-    print("Alternatively, choose from your available albums:")
-    all_albums = shared + own
-    return choose_album_interactive(all_albums)
-
-
-def choose_album_interactive(albums):
-    """Let user pick an album from a list."""
-    if not albums:
-        print("No albums found.")
-        return None
-
-    # Deduplicate by id
-    seen = set()
-    unique = []
-    for a in albums:
-        if a["id"] not in seen:
-            seen.add(a["id"])
-            unique.append(a)
-    albums = unique
-
-    print(f"\nFound {len(albums)} albums:\n")
-    for i, album in enumerate(albums, 1):
-        count = album.get("mediaItemsCount", "?")
-        print(f"  {i}. {album.get('title', 'Untitled')} ({count} items)")
-
-    print()
-    while True:
-        choice = input("Enter album number (or 'q' to quit): ").strip()
-        if choice.lower() == "q":
-            sys.exit(0)
-        try:
-            idx = int(choice) - 1
-            if 0 <= idx < len(albums):
-                return albums[idx]
-        except ValueError:
-            pass
-        print("Invalid choice, try again.")
-
-
-# ---- Gemini ----
 
 def analyze_image(model, image):
     """Send image to Gemini and get item descriptions."""
     response = model.generate_content([GEMINI_PROMPT, image])
     text = response.text.strip()
 
-    # Strip markdown code fences if present
     if text.startswith("```"):
         lines = text.split("\n")
         lines = [l for l in lines[1:] if not l.strip().startswith("```")]
@@ -287,12 +181,10 @@ def analyze_image(model, image):
     return []
 
 
-# ---- Google Sheets ----
-
 def setup_sheet(sheets, spreadsheet_id):
     """Set up the header row in the spreadsheet."""
     headers = [
-        ["Item", "Description", "Category", "Condition", "Photo Link",
+        ["Item", "Description", "Category", "Condition", "Photo",
          "Claimed By", "Priority (1-3)", "Notes"]
     ]
 
@@ -343,14 +235,12 @@ def append_rows(sheets, spreadsheet_id, rows):
     ).execute()
 
 
-# ---- Main ----
-
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="Catalog items from Google Photos into Google Sheets")
+    parser = argparse.ArgumentParser(description="Catalog items from photos into Google Sheets")
     parser.add_argument("spreadsheet_id", help="Google Sheet ID (from the URL)")
-    parser.add_argument("--album-url", help="Google Photos shared album URL")
+    parser.add_argument("photos_dir", help="Directory containing photos to process")
     args = parser.parse_args()
 
     load_env()
@@ -364,40 +254,20 @@ def main():
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-2.0-flash")
 
-    # Set up Google APIs
+    # Get photos
+    image_files = get_image_files(args.photos_dir)
+    if not image_files:
+        print(f"No image files found in {args.photos_dir}")
+        print(f"Supported formats: {', '.join(sorted(IMAGE_EXTENSIONS))}")
+        sys.exit(1)
+
+    print(f"Found {len(image_files)} photos in {args.photos_dir}")
+
+    # Set up Google Sheets
     print("Authenticating with Google...")
     creds = get_google_creds()
     sheets = build("sheets", "v4", credentials=creds)
 
-    # Find the album
-    if args.album_url:
-        print(f"Looking for album from URL...")
-        album = find_album_by_url(creds, args.album_url)
-    else:
-        print("No album URL provided. Listing your albums...")
-        all_albums = list_shared_albums(creds) + list_albums(creds)
-        album = choose_album_interactive(all_albums)
-
-    if not album:
-        print("No album selected.")
-        sys.exit(1)
-
-    album_title = album.get("title", "Untitled")
-    album_id = album["id"]
-    print(f"\nProcessing album: {album_title}")
-
-    # Get all photos
-    print("Fetching photos from album...")
-    media_items = get_album_media(creds, album_id)
-    # Filter to images only
-    media_items = [m for m in media_items if m.get("mimeType", "").startswith("image/")]
-    print(f"Found {len(media_items)} photos")
-
-    if not media_items:
-        print("No photos found in this album.")
-        sys.exit(1)
-
-    # Set up spreadsheet
     print("Setting up spreadsheet...")
     setup_sheet(sheets, args.spreadsheet_id)
 
@@ -405,14 +275,12 @@ def main():
     total_items = 0
     rows = []
 
-    for i, media_item in enumerate(media_items, 1):
-        filename = media_item.get("filename", "unknown")
-        print(f"  [{i}/{len(media_items)}] {filename}...", end=" ", flush=True)
+    for i, image_path in enumerate(image_files, 1):
+        print(f"  [{i}/{len(image_files)}] {image_path.name}...", end=" ", flush=True)
 
         try:
-            image = download_photo(media_item)
+            image = load_image(image_path)
             items = analyze_image(model, image)
-            photo_url = media_item.get("productUrl", "")
 
             for item in items:
                 rows.append([
@@ -420,7 +288,7 @@ def main():
                     item.get("description", ""),
                     item.get("category", "Other"),
                     item.get("condition", ""),
-                    photo_url,
+                    image_path.name,
                     "",  # Claimed By
                     "",  # Priority
                     "",  # Notes
@@ -436,7 +304,7 @@ def main():
         time.sleep(4)
 
         # Batch write every 20 photos
-        if len(rows) >= 50 or i == len(media_items):
+        if len(rows) >= 50 or i == len(image_files):
             if rows:
                 append_rows(sheets, args.spreadsheet_id, rows)
                 print(f"  -> Wrote {len(rows)} items to spreadsheet")
