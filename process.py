@@ -77,8 +77,34 @@ def get_google_creds():
                 print("Download it from Google Cloud Console > APIs & Credentials > OAuth 2.0 Client IDs")
                 print(f"Save it as: {creds_path}")
                 sys.exit(1)
-            flow = InstalledAppFlow.from_client_secrets_file(str(creds_path), SCOPES)
-            creds = flow.run_local_server(port=0)
+            # Load credentials - supports both "web" and "installed" client types
+            creds_data = json.loads(creds_path.read_text())
+            client_type = "web" if "web" in creds_data else "installed"
+
+            if client_type == "web":
+                # Convert web client to installed format for InstalledAppFlow
+                web_config = creds_data["web"]
+                installed_config = {
+                    "installed": {
+                        "client_id": web_config["client_id"],
+                        "client_secret": web_config["client_secret"],
+                        "auth_uri": web_config["auth_uri"],
+                        "token_uri": web_config["token_uri"],
+                        "redirect_uris": ["http://localhost:8888"],
+                    }
+                }
+                import tempfile
+                tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+                json.dump(installed_config, tmp)
+                tmp.close()
+                flow = InstalledAppFlow.from_client_secrets_file(tmp.name, SCOPES)
+                os.unlink(tmp.name)
+                port = 8888
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(str(creds_path), SCOPES)
+                port = 0
+
+            creds = flow.run_local_server(port=port)
 
         token_path.write_text(creds.to_json())
 

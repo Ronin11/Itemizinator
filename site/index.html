@@ -446,6 +446,11 @@
                     return;
                 }
 
+                if (resp.status === 403) {
+                    alert("You don't have edit access to this spreadsheet. Ask the organizer to share it with your Google account as an Editor.");
+                    return;
+                }
+
                 if (!resp.ok) {
                     const err = await resp.json();
                     alert(`Failed to update: ${err.error?.message || resp.statusText}`);
