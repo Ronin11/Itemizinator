@@ -380,23 +380,39 @@
             return null;
         }
 
-        async function fetchSheetData(id) {
-            const url = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:json`;
-            const response = await fetch(url);
-            const text = await response.text();
+        function fetchSheetData(id) {
+            // Use JSONP to avoid CORS issues (works from file:// and any origin)
+            return new Promise((resolve, reject) => {
+                const callbackName = "_sheetCallback_" + Date.now();
+                const script = document.createElement("script");
 
-            const jsonStr = text.match(/google\.visualization\.Query\.setResponse\((.+)\)/s);
-            if (!jsonStr) throw new Error("Could not parse sheet data");
+                window[callbackName] = (data) => {
+                    delete window[callbackName];
+                    script.remove();
 
-            const data = JSON.parse(jsonStr[1]);
-            const cols = data.table.cols.map(c => c.label);
-            const rows = data.table.rows.map((r, idx) => {
-                const obj = Object.fromEntries(cols.map((col, i) => [col, r.c[i]?.v ?? ""]));
-                obj._rowIndex = idx + 2; // +2 because row 1 is header, Sheets is 1-indexed
-                return obj;
+                    try {
+                        const cols = data.table.cols.map(c => c.label);
+                        const rows = data.table.rows.map((r, idx) => {
+                            const obj = Object.fromEntries(cols.map((col, i) => [col, r.c[i]?.v ?? ""]));
+                            obj._rowIndex = idx + 2;
+                            return obj;
+                        });
+                        resolve(rows);
+                    } catch (e) {
+                        reject(new Error("Could not parse sheet data"));
+                    }
+                };
+
+                script.onerror = () => {
+                    delete window[callbackName];
+                    script.remove();
+                    reject(new Error("Failed to load sheet data. Make sure the spreadsheet is shared as 'Anyone with the link can view'."));
+                };
+
+                // responseHandler param tells Google to wrap the response in our callback
+                script.src = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=responseHandler:${callbackName}`;
+                document.head.appendChild(script);
             });
-
-            return rows;
         }
 
         // ---- Claiming ----
