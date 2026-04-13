@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Itemizer - Process photos through Gemini and catalog to Google Sheets.
+Itemizer - Process photos from Google Drive through Gemini into Google Sheets.
 
 Usage:
-    python process.py <spreadsheet_id> <photos_dir>
+    python process.py <spreadsheet_id> <drive_folder_id>
 
-photos_dir should contain image files (jpg, png, heic, etc.) or zip files.
-Each image is uploaded to Google Drive, analyzed by Gemini to identify items,
-then results (with photo URLs) are written to the Google Sheet.
+Upload photos to a Google Drive folder, then point this script at it.
+Each image is sent to Gemini to identify the item, then results
+are written to the Google Sheet with photo URLs.
 """
 
 import io
@@ -22,39 +22,32 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-from PIL import Image
+from googleapiclient.http import MediaIoBaseDownload
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive.readonly",
 ]
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".bmp", ".tiff", ".tif"}
-
-MIME_TYPES = {
-    ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-    ".png": "image/png", ".heic": "image/heic",
-    ".heif": "image/heif", ".webp": "image/webp",
-    ".bmp": "image/bmp", ".tiff": "image/tiff", ".tif": "image/tiff",
-}
+IMAGE_MIMES = {"image/jpeg", "image/png", "image/heic", "image/heif", "image/webp", "image/bmp", "image/tiff"}
 
 GEMINI_PROMPT = """You are helping catalog household items from an estate.
-Look at this photo and identify each distinct item you can see.
+Each photo is of ONE specific item someone wants to catalog. Identify the main item
+that is the focus of the photo. Do NOT list background items, furniture the item is
+sitting on, or other incidental things in the frame.
 
-For EACH item, provide:
+Provide:
 1. name: A short, clear name for the item
 2. description: A brief description (color, material, style, brand if visible)
 3. category: One of: Furniture, Electronics, Kitchen, Decor, Clothing, Books/Media, Tools, Jewelry/Accessories, Art, Collectibles, Appliances, Linens/Textiles, Other
 4. condition: One of: Excellent, Good, Fair, Poor
 
-Return a JSON array of objects. Example:
+Return a JSON array with exactly one object. Example:
 [
-  {"name": "Oak Dining Table", "description": "Solid oak, seats 6, minor scratches on surface", "category": "Furniture", "condition": "Good"},
-  {"name": "Blue Table Lamp", "description": "Ceramic base, blue glaze, white shade", "category": "Decor", "condition": "Excellent"}
+  {"name": "Oak Dining Table", "description": "Solid oak, seats 6, minor scratches on surface", "category": "Furniture", "condition": "Good"}
 ]
 
-If you cannot identify any items clearly, return an empty array: []
+If you cannot identify the item clearly, return an empty array: []
 Return ONLY the JSON array, no other text."""
 
 
@@ -123,88 +116,68 @@ def get_google_creds():
     return creds
 
 
-# ---- Files ----
+# ---- Google Drive ----
 
-def extract_zips(photos_dir):
-    """Extract any zip files found in the directory."""
-    import zipfile
-    photos_path = Path(photos_dir)
-    for f in list(photos_path.iterdir()):
-        if f.is_file() and f.suffix.lower() == ".zip":
-            print(f"Extracting {f.name}...")
-            with zipfile.ZipFile(f, "r") as zf:
-                zf.extractall(photos_path)
-            f.unlink()
-
-
-def get_image_files(photos_dir):
-    """Get all image files from a directory (recursively), sorted by name."""
-    photos_path = Path(photos_dir)
-    if not photos_path.is_dir():
-        print(f"ERROR: {photos_dir} is not a directory")
-        sys.exit(1)
-
-    extract_zips(photos_path)
-
+def list_drive_images(drive, folder_id):
+    """List all image files in a Drive folder (recursively)."""
     files = []
-    for f in sorted(photos_path.rglob("*")):
-        if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS:
-            files.append(f)
+    page_token = None
+    while True:
+        resp = drive.files().list(
+            q=f"'{folder_id}' in parents and trashed=false",
+            fields="nextPageToken, files(id, name, mimeType)",
+            orderBy="name",
+            pageSize=100,
+            pageToken=page_token,
+        ).execute()
+
+        for f in resp.get("files", []):
+            if f["mimeType"] in IMAGE_MIMES:
+                files.append(f)
+            elif f["mimeType"] == "application/vnd.google-apps.folder":
+                files.extend(list_drive_images(drive, f["id"]))
+
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
     return files
 
 
-def load_image(path):
-    """Load an image file for Gemini. Returns PIL Image or raw bytes for HEIC."""
-    suffix = path.suffix.lower()
-    if suffix in (".heic", ".heif"):
-        data = path.read_bytes()
-        return {"mime_type": MIME_TYPES[suffix], "data": data}
-    return Image.open(path)
+def download_drive_file(drive, file_id):
+    """Download a file from Drive into memory and return bytes."""
+    request = drive.files().get_media(fileId=file_id)
+    buffer = io.BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+    return buffer.getvalue()
 
 
-# ---- Google Drive ----
-
-def create_drive_folder(drive, name):
-    """Create a folder in Drive and return its ID."""
-    metadata = {
-        "name": name,
-        "mimeType": "application/vnd.google-apps.folder",
-    }
-    folder = drive.files().create(body=metadata, fields="id").execute()
-    return folder["id"]
-
-
-def share_folder_public(drive, folder_id):
-    """Make a Drive folder viewable by anyone with the link."""
-    drive.permissions().create(
-        fileId=folder_id,
-        body={"type": "anyone", "role": "reader"},
-    ).execute()
-
-
-def upload_to_drive(drive, file_path, folder_id):
-    """Upload a file to Drive and return a direct image URL."""
-    suffix = file_path.suffix.lower()
-    mime_type = MIME_TYPES.get(suffix, "application/octet-stream")
-
-    metadata = {
-        "name": file_path.name,
-        "parents": [folder_id],
-    }
-    media = MediaFileUpload(str(file_path), mimetype=mime_type, resumable=True)
-    uploaded = drive.files().create(
-        body=metadata, media_body=media, fields="id"
-    ).execute()
-
-    file_id = uploaded["id"]
+def make_photo_url(file_id):
+    """Direct image URL for a publicly readable Drive file."""
     return f"https://lh3.googleusercontent.com/d/{file_id}"
+
+
+def ensure_folder_shared(drive, folder_id):
+    """Make sure the folder is viewable by anyone with link (for photo URLs)."""
+    try:
+        drive.permissions().create(
+            fileId=folder_id,
+            body={"type": "anyone", "role": "reader"},
+        ).execute()
+        print("  Drive folder set to 'Anyone with link can view'")
+    except Exception:
+        # May fail if already shared or insufficient permissions — that's fine
+        pass
 
 
 # ---- Gemini ----
 
-def analyze_image(model, image):
-    """Send image to Gemini and get item descriptions."""
-    response = model.generate_content([GEMINI_PROMPT, image])
+def analyze_image(model, image_bytes, mime_type):
+    """Send image to Gemini and get item description."""
+    image_part = {"mime_type": mime_type, "data": image_bytes}
+    response = model.generate_content([GEMINI_PROMPT, image_part])
     text = response.text.strip()
 
     if text.startswith("```"):
@@ -283,9 +256,9 @@ def append_rows(sheets, spreadsheet_id, rows):
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="Catalog items from photos into Google Sheets")
+    parser = argparse.ArgumentParser(description="Catalog items from Google Drive photos into Google Sheets")
     parser.add_argument("spreadsheet_id", help="Google Sheet ID (from the URL)")
-    parser.add_argument("photos_dir", help="Directory containing photos to process")
+    parser.add_argument("drive_folder_id", help="Google Drive folder ID containing photos")
     args = parser.parse_args()
 
     load_env()
@@ -299,27 +272,26 @@ def main():
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-2.0-flash")
 
-    # Get photos
-    image_files = get_image_files(args.photos_dir)
-    if not image_files:
-        print(f"No image files found in {args.photos_dir}")
-        print(f"Supported formats: {', '.join(sorted(IMAGE_EXTENSIONS))}")
-        sys.exit(1)
-
-    print(f"Found {len(image_files)} photos in {args.photos_dir}")
-
     # Set up Google APIs
     print("Authenticating with Google...")
     creds = get_google_creds()
     sheets = build("sheets", "v4", credentials=creds)
     drive = build("drive", "v3", credentials=creds)
 
-    # Create a shared Drive folder for the photos
-    print("Creating Drive folder for photos...")
-    folder_id = create_drive_folder(drive, "Itemizer Photos")
-    share_folder_public(drive, folder_id)
-    print(f"  https://drive.google.com/drive/folders/{folder_id}")
+    # List images in Drive folder
+    print("Scanning Drive folder for images...")
+    image_files = list_drive_images(drive, args.drive_folder_id)
+    if not image_files:
+        print("No image files found in the Drive folder.")
+        print("Upload photos to the folder and try again.")
+        sys.exit(1)
 
+    print(f"Found {len(image_files)} photos")
+
+    # Make sure folder is publicly viewable for photo URLs
+    ensure_folder_shared(drive, args.drive_folder_id)
+
+    # Set up spreadsheet
     print("Setting up spreadsheet...")
     setup_sheet(sheets, args.spreadsheet_id)
 
@@ -327,16 +299,13 @@ def main():
     total_items = 0
     rows = []
 
-    for i, image_path in enumerate(image_files, 1):
-        print(f"  [{i}/{len(image_files)}] {image_path.name}...", end=" ", flush=True)
+    for i, img in enumerate(image_files, 1):
+        print(f"  [{i}/{len(image_files)}] {img['name']}...", end=" ", flush=True)
 
         try:
-            # Upload to Drive first
-            photo_url = upload_to_drive(drive, image_path, folder_id)
-
-            # Analyze with Gemini
-            image = load_image(image_path)
-            items = analyze_image(model, image)
+            image_bytes = download_drive_file(drive, img["id"])
+            items = analyze_image(model, image_bytes, img["mimeType"])
+            photo_url = make_photo_url(img["id"])
 
             for item in items:
                 rows.append([
@@ -350,7 +319,7 @@ def main():
                     "",  # Notes
                 ])
 
-            print(f"{len(items)} items found")
+            print(f"{len(items)} item{'s' if len(items) != 1 else ''}")
             total_items += len(items)
 
         except Exception as e:
