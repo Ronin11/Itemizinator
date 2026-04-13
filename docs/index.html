@@ -243,7 +243,7 @@
 <body>
     <header>
         <h1 id="page-title">Estate Items</h1>
-        <p>Sign in with Google to browse and claim items.</p>
+        <p>Sign in with Google to browse items and register interest.</p>
     </header>
 
     <div id="user-bar" class="user-bar" style="display:none"></div>
@@ -340,7 +340,7 @@
         function showSignInPrompt() {
             app.innerHTML = `
                 <div class="sign-in-prompt">
-                    <p>Sign in with your Google account to view and claim items.</p>
+                    <p>Sign in with your Google account to browse items and register interest.</p>
                     <button onclick="signIn()">Sign in with Google</button>
                 </div>
             `;
@@ -462,7 +462,7 @@
                 }
 
                 if (resp.status === 403) {
-                    alert("You don't have edit access to this spreadsheet. Ask the organizer to share it with your Google account as an Editor.");
+                    alert("You don't have access to register interest. Ask the organizer to share the spreadsheet with your Google account.");
                     return;
                 }
 
@@ -503,13 +503,13 @@
                     </select>
                     <select id="claim-filter">
                         <option value="" ${currentFilters.claimStatus === "" ? "selected" : ""}>All Items</option>
-                        <option value="unclaimed" ${currentFilters.claimStatus === "unclaimed" ? "selected" : ""}>Unclaimed Only</option>
-                        <option value="claimed" ${currentFilters.claimStatus === "claimed" ? "selected" : ""}>Claimed Only</option>
-                        <option value="mine" ${currentFilters.claimStatus === "mine" ? "selected" : ""}>My Claims</option>
+                        <option value="unclaimed" ${currentFilters.claimStatus === "unclaimed" ? "selected" : ""}>Available</option>
+                        <option value="claimed" ${currentFilters.claimStatus === "claimed" ? "selected" : ""}>Interest Registered</option>
+                        <option value="mine" ${currentFilters.claimStatus === "mine" ? "selected" : ""}>My Interests</option>
                     </select>
                 </div>
                 <div class="stats" id="stats">
-                    ${items.length} items total &middot; ${totalClaimed} claimed &middot; ${items.length - totalClaimed} available
+                    ${items.length} items total &middot; ${totalClaimed} interest registered &middot; ${items.length - totalClaimed} available
                 </div>
                 <div id="items-container"></div>
             `;
@@ -542,7 +542,7 @@
                 });
 
                 const claimed = filtered.filter(i => i["Claimed By"]).length;
-                stats.textContent = `Showing ${filtered.length} of ${items.length} items \u00b7 ${claimed} claimed \u00b7 ${filtered.length - claimed} available`;
+                stats.textContent = `Showing ${filtered.length} of ${items.length} items \u00b7 ${claimed} interest registered \u00b7 ${filtered.length - claimed} available`;
 
                 container.innerHTML = `
                     <div class="items-grid">
@@ -553,9 +553,9 @@
 
                             let claimButton = "";
                             if (!isClaimed) {
-                                claimButton = `<button class="claim-btn claim" onclick="claimItem(${item._rowIndex}, true)">Claim</button>`;
+                                claimButton = `<button class="claim-btn claim" onclick="claimItem(${item._rowIndex}, true)">I'm Interested</button>`;
                             } else if (isMine) {
-                                claimButton = `<button class="claim-btn unclaim" onclick="claimItem(${item._rowIndex}, false)">Unclaim</button>`;
+                                claimButton = `<button class="claim-btn unclaim" onclick="claimItem(${item._rowIndex}, false)">Remove Interest</button>`;
                             }
 
                             const photoUrl = item.Photo || item["Photo Link"] || "";
@@ -570,7 +570,7 @@
                                             <span class="tag tag-category">${escapeHtml(item.Category)}</span>
                                             ${item.Condition ? `<span class="tag tag-condition">${escapeHtml(item.Condition)}</span>` : ""}
                                         </div>
-                                        ${isClaimed ? `<div class="item-claimed">${isMine ? "Claimed by you" : `Claimed by ${escapeHtml(item["Claimed By"])}`}</div>` : ""}
+                                        ${isClaimed ? `<div class="item-claimed">${isMine ? "You're interested" : `${escapeHtml(item["Claimed By"])} is interested`}</div>` : ""}
                                         ${item.Notes ? `<div class="item-desc" style="margin-top:0.25rem"><em>${escapeHtml(item.Notes)}</em></div>` : ""}
                                         ${claimButton}
                                     </div>
