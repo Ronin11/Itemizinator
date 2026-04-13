@@ -77,22 +77,22 @@
 
         .sign-in-prompt {
             text-align: center;
-            padding: 1rem;
+            padding: 3rem 1rem;
+        }
+
+        .sign-in-prompt p {
+            color: var(--muted);
             margin-bottom: 1rem;
-            background: var(--accent-light);
-            border-radius: 8px;
-            font-size: 0.9rem;
         }
 
         .sign-in-prompt button {
-            padding: 0.5rem 1rem;
+            padding: 0.6rem 1.5rem;
             border: none;
             border-radius: 6px;
             background: var(--accent);
             color: white;
-            font-size: 0.9rem;
+            font-size: 1rem;
             cursor: pointer;
-            margin-top: 0.5rem;
         }
 
         .sign-in-prompt button:hover { opacity: 0.9; }
@@ -126,16 +126,6 @@
             color: var(--muted);
             font-size: 0.85rem;
             margin-bottom: 1rem;
-        }
-
-        .room-section { margin-bottom: 2rem; }
-
-        .room-section h2 {
-            font-size: 1.25rem;
-            font-weight: 600;
-            margin-bottom: 0.75rem;
-            padding-bottom: 0.5rem;
-            border-bottom: 2px solid var(--border);
         }
 
         .items-grid {
@@ -211,16 +201,6 @@
             margin-top: 0.5rem;
         }
 
-        .item-card .photo-link {
-            display: inline-block;
-            font-size: 0.8rem;
-            color: var(--accent);
-            text-decoration: none;
-            margin-top: 0.25rem;
-        }
-
-        .item-card .photo-link:hover { text-decoration: underline; }
-
         .claim-btn {
             display: inline-block;
             margin-top: 0.5rem;
@@ -238,28 +218,18 @@
         .claim-btn.unclaim:hover { background: #fecaca; }
         .claim-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        .setup-prompt {
-            text-align: center;
-            padding: 3rem 1rem;
-            color: var(--muted);
-        }
-
-        .setup-prompt code {
-            display: block;
-            background: #f5f5f4;
-            padding: 1rem;
-            border-radius: 6px;
-            margin: 1rem auto;
-            max-width: 600px;
-            text-align: left;
-            font-size: 0.85rem;
-            word-break: break-all;
-        }
-
         .loading {
             text-align: center;
             padding: 3rem;
             color: var(--muted);
+        }
+
+        .error-msg {
+            text-align: center;
+            padding: 2rem;
+            color: #991b1b;
+            background: #fee2e2;
+            border-radius: 8px;
         }
 
         @media (max-width: 640px) {
@@ -273,30 +243,19 @@
 <body>
     <header>
         <h1 id="page-title">Estate Items</h1>
-        <p>Browse and claim items. Sign in with Google to claim.</p>
+        <p>Sign in with Google to browse and claim items.</p>
     </header>
 
     <div id="user-bar" class="user-bar" style="display:none"></div>
-    <div id="app">
-        <div class="setup-prompt" id="setup">
-            <h2>Setup</h2>
-            <p>To connect this page to your Google Sheet:</p>
-            <p>1. Open your Google Sheet</p>
-            <p>2. Share it as "Anyone with the link can view"</p>
-            <p>3. Add the sheet ID to this page's URL as a parameter:</p>
-            <code id="example-url"></code>
-            <p style="margin-top: 1rem">Or edit <strong>site/config.js</strong> with your sheet ID and OAuth client ID.</p>
-        </div>
-    </div>
+    <div id="app"></div>
 
     <script src="config.js"></script>
     <script>
         const app = document.getElementById("app");
-        const setup = document.getElementById("setup");
         const userBar = document.getElementById("user-bar");
 
         // Auth state
-        let currentUser = null;   // { email, name, picture }
+        let currentUser = null;
         let accessToken = null;
         let tokenClient = null;
         let allItems = [];
@@ -305,19 +264,20 @@
         // ---- Google Identity Services ----
 
         function initAuth() {
-            // ID token client for sign-in (get user info)
             google.accounts.id.initialize({
                 client_id: GOOGLE_CLIENT_ID,
                 callback: handleIdToken,
                 auto_select: true,
             });
 
-            // Access token client for Sheets API writes
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: GOOGLE_CLIENT_ID,
                 scope: "https://www.googleapis.com/auth/spreadsheets",
                 callback: handleAccessToken,
             });
+
+            // Show sign-in prompt
+            showSignInPrompt();
         }
 
         function handleIdToken(response) {
@@ -328,37 +288,62 @@
                 picture: payload.picture,
             };
             renderUserBar();
-            renderCurrentView();
+            // Now request an access token to read/write the sheet
+            if (!accessToken) {
+                app.innerHTML = '<div class="loading">Authorizing...</div>';
+                requestAccessToken();
+            }
         }
 
         function handleAccessToken(response) {
             if (response.error) {
                 console.error("Token error:", response);
+                app.innerHTML = '<div class="error-msg">Authorization failed. Please try signing in again.</div>';
                 return;
             }
             accessToken = response.access_token;
-            // If there was a pending claim, execute it now
+
+            // If there was a pending claim, execute it
             if (pendingClaim) {
                 const { rowIndex, shouldClaim } = pendingClaim;
                 pendingClaim = null;
                 executeClaimWrite(rowIndex, shouldClaim);
+                return;
             }
+
+            // Otherwise, load data
+            loadData();
         }
 
         function signIn() {
-            google.accounts.id.prompt();
+            google.accounts.id.prompt((notification) => {
+                // If prompt was dismissed or skipped, fall back to token client
+                if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+                    requestAccessToken();
+                }
+            });
         }
 
         function signOut() {
             currentUser = null;
             accessToken = null;
+            allItems = [];
             google.accounts.id.disableAutoSelect();
             renderUserBar();
-            renderCurrentView();
+            showSignInPrompt();
         }
 
         function requestAccessToken() {
             tokenClient.requestAccessToken();
+        }
+
+        function showSignInPrompt() {
+            app.innerHTML = `
+                <div class="sign-in-prompt">
+                    <p>Sign in with your Google account to view and claim items.</p>
+                    <button onclick="signIn()">Sign in with Google</button>
+                </div>
+            `;
         }
 
         function renderUserBar() {
@@ -376,7 +361,7 @@
             `;
         }
 
-        // ---- Data fetching ----
+        // ---- Data fetching via Sheets API ----
 
         function getSheetId() {
             const params = new URLSearchParams(window.location.search);
@@ -390,39 +375,53 @@
             return null;
         }
 
-        function fetchSheetData(id) {
-            // Use JSONP to avoid CORS issues (works from file:// and any origin)
-            return new Promise((resolve, reject) => {
-                const callbackName = "_sheetCallback_" + Date.now();
-                const script = document.createElement("script");
+        async function fetchSheetData(id) {
+            const resp = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/Sheet1?majorDimension=ROWS`,
+                { headers: { "Authorization": `Bearer ${accessToken}` } }
+            );
 
-                window[callbackName] = (data) => {
-                    delete window[callbackName];
-                    script.remove();
+            if (resp.status === 401) {
+                accessToken = null;
+                requestAccessToken();
+                return [];
+            }
 
-                    try {
-                        const cols = data.table.cols.map(c => c.label);
-                        const rows = data.table.rows.map((r, idx) => {
-                            const obj = Object.fromEntries(cols.map((col, i) => [col, r.c[i]?.v ?? ""]));
-                            obj._rowIndex = idx + 2;
-                            return obj;
-                        });
-                        resolve(rows);
-                    } catch (e) {
-                        reject(new Error("Could not parse sheet data"));
-                    }
-                };
+            if (resp.status === 403) {
+                throw new Error("You don't have access to this spreadsheet. Ask the organizer to share it with your Google account.");
+            }
 
-                script.onerror = () => {
-                    delete window[callbackName];
-                    script.remove();
-                    reject(new Error("Failed to load sheet data. Make sure the spreadsheet is shared as 'Anyone with the link can view'."));
-                };
+            if (!resp.ok) {
+                const err = await resp.json();
+                throw new Error(err.error?.message || resp.statusText);
+            }
 
-                // responseHandler param tells Google to wrap the response in our callback
-                script.src = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=responseHandler:${callbackName}`;
-                document.head.appendChild(script);
+            const data = await resp.json();
+            const rows = data.values || [];
+            if (rows.length < 2) return [];
+
+            const headers = rows[0];
+            return rows.slice(1).map((row, idx) => {
+                const obj = {};
+                headers.forEach((h, i) => { obj[h] = row[i] || ""; });
+                obj._rowIndex = idx + 2;
+                return obj;
             });
+        }
+
+        async function loadData() {
+            app.innerHTML = '<div class="loading">Loading items...</div>';
+
+            try {
+                allItems = await fetchSheetData(sheetId);
+                if (allItems.length === 0) {
+                    app.innerHTML = '<div class="loading">No items found yet. Run the processing script first.</div>';
+                    return;
+                }
+                renderItems(allItems);
+            } catch (err) {
+                app.innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
+            }
         }
 
         // ---- Claiming ----
@@ -430,25 +429,16 @@
         let pendingClaim = null;
 
         async function claimItem(rowIndex, shouldClaim) {
-            if (!currentUser) {
-                signIn();
-                return;
-            }
-
-            // Need an access token for Sheets API
             if (!accessToken) {
                 pendingClaim = { rowIndex, shouldClaim };
                 requestAccessToken();
                 return;
             }
-
             await executeClaimWrite(rowIndex, shouldClaim);
         }
 
         async function executeClaimWrite(rowIndex, shouldClaim) {
             const email = shouldClaim ? currentUser.email : "";
-
-            // Column F = "Claimed By" (column 6)
             const range = `Sheet1!F${rowIndex}`;
 
             try {
@@ -465,7 +455,6 @@
                 );
 
                 if (resp.status === 401) {
-                    // Token expired, re-request
                     accessToken = null;
                     pendingClaim = { rowIndex, shouldClaim };
                     requestAccessToken();
@@ -483,7 +472,6 @@
                     return;
                 }
 
-                // Update local data and re-render
                 const item = allItems.find(i => i._rowIndex === rowIndex);
                 if (item) item["Claimed By"] = email;
                 renderCurrentView();
@@ -506,15 +494,7 @@
             const categories = [...new Set(items.map(i => i.Category))].sort();
             const totalClaimed = items.filter(i => i["Claimed By"]).length;
 
-            const signInBanner = !currentUser ? `
-                <div class="sign-in-prompt">
-                    Sign in with Google to claim items
-                    <br><button onclick="signIn()">Sign in with Google</button>
-                </div>
-            ` : "";
-
             let html = `
-                ${signInBanner}
                 <div class="controls">
                     <input type="text" id="search" placeholder="Search items..." value="${escapeHtml(currentFilters.query)}">
                     <select id="category-filter">
@@ -525,7 +505,7 @@
                         <option value="" ${currentFilters.claimStatus === "" ? "selected" : ""}>All Items</option>
                         <option value="unclaimed" ${currentFilters.claimStatus === "unclaimed" ? "selected" : ""}>Unclaimed Only</option>
                         <option value="claimed" ${currentFilters.claimStatus === "claimed" ? "selected" : ""}>Claimed Only</option>
-                        ${currentUser ? `<option value="mine" ${currentFilters.claimStatus === "mine" ? "selected" : ""}>My Claims</option>` : ""}
+                        <option value="mine" ${currentFilters.claimStatus === "mine" ? "selected" : ""}>My Claims</option>
                     </select>
                 </div>
                 <div class="stats" id="stats">
@@ -535,7 +515,6 @@
             `;
 
             app.innerHTML = html;
-            setup.style.display = "none";
 
             const container = document.getElementById("items-container");
             const searchInput = document.getElementById("search");
@@ -573,12 +552,10 @@
                             const cardClass = isMine ? "mine" : (isClaimed ? "claimed" : "");
 
                             let claimButton = "";
-                            if (currentUser) {
-                                if (!isClaimed) {
-                                    claimButton = `<button class="claim-btn claim" onclick="claimItem(${item._rowIndex}, true)">Claim</button>`;
-                                } else if (isMine) {
-                                    claimButton = `<button class="claim-btn unclaim" onclick="claimItem(${item._rowIndex}, false)">Unclaim</button>`;
-                                }
+                            if (!isClaimed) {
+                                claimButton = `<button class="claim-btn claim" onclick="claimItem(${item._rowIndex}, true)">Claim</button>`;
+                            } else if (isMine) {
+                                claimButton = `<button class="claim-btn unclaim" onclick="claimItem(${item._rowIndex}, false)">Unclaim</button>`;
                             }
 
                             const photoUrl = item.Photo || item["Photo Link"] || "";
@@ -623,18 +600,14 @@
             sheetId = getSheetId();
 
             if (!sheetId) {
-                const exUrl = document.getElementById("example-url");
-                exUrl.textContent = window.location.origin + window.location.pathname + "?sheet=YOUR_SPREADSHEET_ID";
+                app.innerHTML = '<div class="loading">No spreadsheet configured. Set SHEET_ID in config.js.</div>';
                 return;
             }
-
-            setup.style.display = "none";
-            app.innerHTML = '<div class="loading">Loading items from spreadsheet...</div>';
 
             const name = getSheetName();
             if (name) document.getElementById("page-title").textContent = name;
 
-            // Init Google auth (waits for GSI library to load)
+            // Wait for GSI library and init auth
             if (GOOGLE_CLIENT_ID) {
                 const waitForGoogle = () => new Promise(resolve => {
                     if (typeof google !== "undefined" && google.accounts) return resolve();
@@ -647,21 +620,8 @@
                 });
                 await waitForGoogle();
                 initAuth();
-            }
-
-            try {
-                allItems = await fetchSheetData(sheetId);
-                if (allItems.length === 0) {
-                    app.innerHTML = '<div class="setup-prompt"><p>No items found in the spreadsheet yet. Run the processing script first.</p></div>';
-                    return;
-                }
-                renderItems(allItems);
-            } catch (err) {
-                app.innerHTML = `<div class="setup-prompt">
-                    <h2>Error loading data</h2>
-                    <p>${escapeHtml(err.message)}</p>
-                    <p style="margin-top:1rem">Make sure the spreadsheet is shared as "Anyone with the link can view".</p>
-                </div>`;
+            } else {
+                app.innerHTML = '<div class="loading">No Google Client ID configured. Set GOOGLE_CLIENT_ID in config.js.</div>';
             }
         }
 
