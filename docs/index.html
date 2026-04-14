@@ -224,6 +224,7 @@
         .tag-condition { background: #fef3c7; color: #92400e; }
         .tag-contested { background: #fee2e2; color: #991b1b; }
         .tag-count { background: var(--contested); color: #92400e; }
+        .tag-location { background: #f3f4f6; color: #374151; }
 
         .item-card .item-interested {
             font-size: 0.85rem;
@@ -481,7 +482,7 @@
                 list = list.filter(e => e !== currentUser.email);
             }
             const newValue = list.join(", ");
-            const range = `Sheet1!F${rowIndex}`;
+            const range = `Sheet1!G${rowIndex}`;
 
             try {
                 const resp = await fetch(
@@ -587,6 +588,7 @@
                         <div class="item-name">${escapeHtml(item.Item)}</div>
                         <div class="item-desc">${escapeHtml(item.Description)}</div>
                         <div class="item-meta">
+                            ${item.Location ? `<span class="tag tag-location">${escapeHtml(item.Location)}</span>` : ""}
                             <span class="tag tag-category">${escapeHtml(item.Category)}</span>
                             ${item.Condition ? `<span class="tag tag-condition">${escapeHtml(item.Condition)}</span>` : ""}
                             ${contested ? `<span class="tag tag-contested">${count} interested</span>` : ""}
@@ -601,16 +603,21 @@
 
         // -- Browse page --
 
-        let browseFilters = { query: "", category: "" };
+        let browseFilters = { query: "", category: "", location: "" };
 
         function renderBrowse() {
-            const categories = [...new Set(allItems.map(i => i.Category))].sort();
-            const totalInterested = allItems.filter(i => interestCount(i) > 0).length;
+            const categories = [...new Set(allItems.map(i => i.Category).filter(Boolean))].sort();
+            const locations = [...new Set(allItems.map(i => i.Location).filter(Boolean))].sort();
 
             app.innerHTML = `
                 ${renderNav()}
                 <div class="controls">
                     <input type="text" id="search" placeholder="Search items..." value="${escapeHtml(browseFilters.query)}">
+                    ${locations.length > 0 ? `
+                    <select id="location-filter">
+                        <option value="">All Locations</option>
+                        ${locations.map(l => `<option value="${escapeHtml(l)}" ${browseFilters.location === l ? "selected" : ""}>${escapeHtml(l)}</option>`).join("")}
+                    </select>` : ""}
                     <select id="category-filter">
                         <option value="">All Categories</option>
                         ${categories.map(c => `<option value="${escapeHtml(c)}" ${browseFilters.category === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}
@@ -623,17 +630,20 @@
             const container = document.getElementById("items-container");
             const searchInput = document.getElementById("search");
             const categoryFilter = document.getElementById("category-filter");
+            const locationFilter = document.getElementById("location-filter");
             const stats = document.getElementById("stats");
 
             function render() {
                 browseFilters.query = searchInput.value;
                 browseFilters.category = categoryFilter.value;
+                browseFilters.location = locationFilter ? locationFilter.value : "";
                 const query = browseFilters.query.toLowerCase();
 
                 let filtered = allItems.filter(item => {
                     if (browseFilters.category && item.Category !== browseFilters.category) return false;
+                    if (browseFilters.location && item.Location !== browseFilters.location) return false;
                     if (query) {
-                        const s = `${item.Item} ${item.Description} ${item.Category}`.toLowerCase();
+                        const s = `${item.Item} ${item.Description} ${item.Category} ${item.Location || ""}`.toLowerCase();
                         if (!s.includes(query)) return false;
                     }
                     return true;
@@ -647,6 +657,7 @@
 
             searchInput.addEventListener("input", render);
             categoryFilter.addEventListener("change", render);
+            if (locationFilter) locationFilter.addEventListener("change", render);
             render();
         }
 

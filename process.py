@@ -118,8 +118,12 @@ def get_google_creds():
 
 # ---- Google Drive ----
 
-def list_drive_images(drive, folder_id):
-    """List all image files in a Drive folder (recursively)."""
+def list_drive_images(drive, folder_id, location=""):
+    """List all image files in a Drive folder (recursively).
+
+    Each returned file is tagged with a 'location' based on its subfolder path.
+    Files directly in the root folder get location="" (empty).
+    """
     files = []
     page_token = None
     while True:
@@ -133,9 +137,12 @@ def list_drive_images(drive, folder_id):
 
         for f in resp.get("files", []):
             if f["mimeType"] in IMAGE_MIMES:
+                f["location"] = location
                 files.append(f)
             elif f["mimeType"] == "application/vnd.google-apps.folder":
-                files.extend(list_drive_images(drive, f["id"]))
+                # Build nested path like "Living Room" or "Living Room / Bookshelf"
+                sub_location = f["name"] if not location else f"{location} / {f['name']}"
+                files.extend(list_drive_images(drive, f["id"], sub_location))
 
         page_token = resp.get("nextPageToken")
         if not page_token:
@@ -200,13 +207,13 @@ def analyze_image(model, image_bytes, mime_type):
 def setup_sheet(sheets, spreadsheet_id):
     """Set up the header row in the spreadsheet."""
     headers = [
-        ["Item", "Description", "Category", "Condition", "Photo",
+        ["Location", "Item", "Description", "Category", "Condition", "Photo",
          "Claimed By", "Priority (1-3)", "Notes"]
     ]
 
     sheets.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
-        range="Sheet1!A1:H1",
+        range="Sheet1!A1:I1",
         valueInputOption="RAW",
         body={"values": headers},
     ).execute()
@@ -244,7 +251,7 @@ def append_rows(sheets, spreadsheet_id, rows):
         return
     sheets.spreadsheets().values().append(
         spreadsheetId=spreadsheet_id,
-        range="Sheet1!A:H",
+        range="Sheet1!A:I",
         valueInputOption="RAW",
         insertDataOption="INSERT_ROWS",
         body={"values": rows},
@@ -309,6 +316,7 @@ def main():
 
             for item in items:
                 rows.append([
+                    img.get("location", ""),
                     item.get("name", "Unknown"),
                     item.get("description", ""),
                     item.get("category", "Other"),
