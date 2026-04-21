@@ -204,12 +204,57 @@ def analyze_image(model, image_bytes, mime_type):
 
 # ---- Google Sheets ----
 
+EXPECTED_HEADERS = [
+    "Location", "Item", "Description", "Category", "Condition", "Photo",
+    "Claimed By", "Priority (1-3)", "Notes"
+]
+
+
+def get_existing_photo_ids(sheets, spreadsheet_id):
+    """Return the set of Drive file IDs already in the sheet's Photo column."""
+    try:
+        resp = sheets.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range="Sheet1!F:F",
+        ).execute()
+    except Exception:
+        return set()
+
+    values = resp.get("values", [])
+    ids = set()
+    for row in values[1:]:  # skip header
+        if not row:
+            continue
+        url = row[0].strip()
+        # URL format: https://lh3.googleusercontent.com/d/{FILE_ID}
+        if "/d/" in url:
+            file_id = url.split("/d/", 1)[1].split("/", 1)[0].split("?", 1)[0]
+            if file_id:
+                ids.add(file_id)
+    return ids
+
+
+def sheet_has_headers(sheets, spreadsheet_id):
+    """Check if the sheet already has the expected headers."""
+    try:
+        resp = sheets.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range="Sheet1!A1:I1",
+        ).execute()
+        values = resp.get("values", [])
+        if not values:
+            return False
+        return values[0][:len(EXPECTED_HEADERS)] == EXPECTED_HEADERS
+    except Exception:
+        return False
+
+
 def setup_sheet(sheets, spreadsheet_id):
-    """Set up the header row in the spreadsheet."""
-    headers = [
-        ["Location", "Item", "Description", "Category", "Condition", "Photo",
-         "Claimed By", "Priority (1-3)", "Notes"]
-    ]
+    """Set up the header row in the spreadsheet (only if not already set)."""
+    if sheet_has_headers(sheets, spreadsheet_id):
+        return
+
+    headers = [EXPECTED_HEADERS]
 
     sheets.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
@@ -266,6 +311,8 @@ def main():
     parser = argparse.ArgumentParser(description="Catalog items from Google Drive photos into Google Sheets")
     parser.add_argument("spreadsheet_id", help="Google Sheet ID (from the URL)")
     parser.add_argument("drive_folder_id", help="Google Drive folder ID containing photos")
+    parser.add_argument("--force", action="store_true",
+                        help="Re-process all photos even if they're already in the sheet")
     args = parser.parse_args()
 
     load_env()
@@ -293,14 +340,28 @@ def main():
         print("Upload photos to the folder and try again.")
         sys.exit(1)
 
-    print(f"Found {len(image_files)} photos")
+    print(f"Found {len(image_files)} photos in Drive")
 
     # Make sure folder is publicly viewable for photo URLs
     ensure_folder_shared(drive, args.drive_folder_id)
 
-    # Set up spreadsheet
+    # Set up spreadsheet (skips if headers already match)
     print("Setting up spreadsheet...")
     setup_sheet(sheets, args.spreadsheet_id)
+
+    # Skip photos already in the sheet (unless --force)
+    if not args.force:
+        existing_ids = get_existing_photo_ids(sheets, args.spreadsheet_id)
+        if existing_ids:
+            skipped = len(image_files)
+            image_files = [f for f in image_files if f["id"] not in existing_ids]
+            skipped -= len(image_files)
+            if skipped > 0:
+                print(f"Skipping {skipped} photos already in the sheet")
+            if not image_files:
+                print("All photos already processed. Use --force to re-process.")
+                sys.exit(0)
+            print(f"Processing {len(image_files)} new photos")
 
     # Process each photo
     total_items = 0
