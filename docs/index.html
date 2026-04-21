@@ -259,6 +259,159 @@
         .error-msg { text-align: center; padding: 2rem; color: #991b1b; background: #fee2e2; border-radius: 8px; }
         .empty-state { text-align: center; padding: 2rem; color: var(--muted); }
 
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 1rem;
+        }
+
+        .modal {
+            background: var(--card);
+            border-radius: 12px;
+            max-width: 500px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-header h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem; }
+        .modal-header p { color: var(--muted); font-size: 0.9rem; }
+
+        .modal-body { padding: 1.5rem; }
+
+        .modal-label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-bottom: 1.25rem;
+        }
+
+        .modal-label:last-child { margin-bottom: 0; }
+
+        .modal-label textarea {
+            width: 100%;
+            padding: 0.6rem 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-family: inherit;
+            margin-top: 0.5rem;
+            resize: vertical;
+        }
+
+        .importance-picker {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .imp-btn {
+            flex: 1;
+            padding: 0.6rem;
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            background: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .imp-btn:hover { border-color: var(--accent); }
+        .imp-btn.selected {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        .importance-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-top: 0.35rem;
+            font-weight: 400;
+        }
+
+        .modal-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .modal-footer-right { display: flex; gap: 0.5rem; }
+
+        .modal-btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .modal-btn-primary { background: var(--accent); color: white; }
+        .modal-btn-primary:hover { opacity: 0.9; }
+        .modal-btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+        .modal-btn-secondary:hover { background: #f5f5f4; }
+        .modal-btn-danger { background: #fee2e2; color: #991b1b; }
+        .modal-btn-danger:hover { background: #fecaca; }
+
+        /* Interested rows (shown on contested cards and My Items) */
+        .interested-list {
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .interested-row {
+            padding: 0.35rem 0;
+            border-top: 1px solid rgba(0,0,0,0.05);
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .interested-row:first-child { border-top: none; }
+        .interested-email { color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+        .importance-pill {
+            font-size: 0.7rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 99px;
+            background: var(--contested);
+            color: #92400e;
+            font-weight: 600;
+        }
+
+        .importance-pill.imp-1, .importance-pill.imp-2 { background: #e5e7eb; color: #374151; }
+        .importance-pill.imp-3 { background: #dbeafe; color: #1e40af; }
+        .importance-pill.imp-4 { background: var(--contested); color: #92400e; }
+        .importance-pill.imp-5 { background: #fee2e2; color: #991b1b; }
+
+        .interested-note {
+            width: 100%;
+            color: var(--muted);
+            font-style: italic;
+            padding-left: 0.25rem;
+            font-size: 0.75rem;
+        }
+
         @media (max-width: 640px) {
             body { padding: 1rem 0.5rem; }
             .items-grid { grid-template-columns: 1fr; }
@@ -290,16 +443,34 @@
         let sheetId = null;
         let currentPage = "browse"; // browse | my-items | contested
 
-        // ---- Helpers for multi-interest "Claimed By" (comma-separated emails) ----
+        // ---- Helpers for multi-interest "Claimed By" ----
+        // Stored as JSON array: [{email, importance, notes}, ...]
+        // Falls back to plain comma-separated emails for backward compatibility.
 
         function getInterestedList(item) {
             const val = (item["Claimed By"] || "").trim();
             if (!val) return [];
-            return val.split(",").map(e => e.trim()).filter(Boolean);
+
+            // Try JSON first
+            if (val.startsWith("[")) {
+                try {
+                    const arr = JSON.parse(val);
+                    if (Array.isArray(arr)) return arr;
+                } catch (e) { /* fall through */ }
+            }
+
+            // Legacy format: plain comma-separated emails
+            return val.split(",").map(e => e.trim()).filter(Boolean).map(email => ({
+                email, importance: 3, notes: "",
+            }));
+        }
+
+        function findMine(list) {
+            return list.find(p => p.email === currentUser?.email);
         }
 
         function isInterested(item) {
-            return getInterestedList(item).includes(currentUser?.email);
+            return !!findMine(getInterestedList(item));
         }
 
         function interestCount(item) {
@@ -308,6 +479,10 @@
 
         function isContested(item) {
             return interestCount(item) > 1;
+        }
+
+        function serializeInterested(list) {
+            return list.length === 0 ? "" : JSON.stringify(list);
         }
 
         // ---- Google Identity Services ----
@@ -350,10 +525,10 @@
             }
             accessToken = response.access_token;
 
-            if (pendingInterest) {
-                const p = pendingInterest;
-                pendingInterest = null;
-                executeInterestWrite(p.rowIndex, p.add);
+            if (pendingWrite) {
+                const p = pendingWrite;
+                pendingWrite = null;
+                executeInterestWrite(p.rowIndex, p.entry);
                 return;
             }
 
@@ -456,32 +631,103 @@
 
         // ---- Interest (multi-person) ----
 
-        let pendingInterest = null;
+        let pendingWrite = null;
 
-        async function toggleInterest(rowIndex) {
+        function openInterestModal(rowIndex) {
             const item = allItems.find(i => i._rowIndex === rowIndex);
             if (!item) return;
-            const interested = isInterested(item);
 
+            const list = getInterestedList(item);
+            const existing = findMine(list);
+            const importance = existing?.importance ?? 3;
+            const notes = existing?.notes ?? "";
+            const isEditing = !!existing;
+
+            const modal = document.createElement("div");
+            modal.className = "modal-overlay";
+            modal.innerHTML = `
+                <div class="modal" role="dialog" aria-modal="true">
+                    <div class="modal-header">
+                        <h2>${isEditing ? "Update Interest" : "Register Interest"}</h2>
+                        <p>${escapeHtml(item.Item)}</p>
+                    </div>
+                    <div class="modal-body">
+                        <label class="modal-label">
+                            How important is this to you?
+                            <div class="importance-picker">
+                                ${[1,2,3,4,5].map(n => `
+                                    <button type="button" class="imp-btn ${n === importance ? "selected" : ""}" data-value="${n}">${n}</button>
+                                `).join("")}
+                            </div>
+                            <div class="importance-labels">
+                                <span>Nice to have</span>
+                                <span>Must have</span>
+                            </div>
+                        </label>
+                        <label class="modal-label">
+                            Notes (optional)
+                            <textarea id="modal-notes" rows="3" placeholder="Why do you want this? Any context for others...">${escapeHtml(notes)}</textarea>
+                        </label>
+                    </div>
+                    <div class="modal-footer">
+                        ${isEditing ? `<button class="modal-btn modal-btn-danger" id="modal-remove">Remove Interest</button>` : ""}
+                        <div class="modal-footer-right">
+                            <button class="modal-btn modal-btn-secondary" id="modal-cancel">Cancel</button>
+                            <button class="modal-btn modal-btn-primary" id="modal-save">${isEditing ? "Save" : "Register Interest"}</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            let selectedImportance = importance;
+            modal.querySelectorAll(".imp-btn").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    modal.querySelectorAll(".imp-btn").forEach(b => b.classList.remove("selected"));
+                    btn.classList.add("selected");
+                    selectedImportance = parseInt(btn.dataset.value, 10);
+                });
+            });
+
+            const close = () => modal.remove();
+            modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+            modal.querySelector("#modal-cancel").addEventListener("click", close);
+            document.addEventListener("keydown", function onEsc(e) {
+                if (e.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); }
+            });
+
+            modal.querySelector("#modal-save").addEventListener("click", async () => {
+                const notesVal = modal.querySelector("#modal-notes").value.trim();
+                close();
+                await saveInterest(rowIndex, { email: currentUser.email, importance: selectedImportance, notes: notesVal });
+            });
+
+            if (isEditing) {
+                modal.querySelector("#modal-remove").addEventListener("click", async () => {
+                    close();
+                    await saveInterest(rowIndex, null);
+                });
+            }
+        }
+
+        async function saveInterest(rowIndex, entry) {
+            // entry = {email, importance, notes} to add/update, or null to remove
             if (!accessToken) {
-                pendingInterest = { rowIndex, add: !interested };
+                pendingWrite = { rowIndex, entry };
                 requestAccessToken();
                 return;
             }
-            await executeInterestWrite(rowIndex, !interested);
+            await executeInterestWrite(rowIndex, entry);
         }
 
-        async function executeInterestWrite(rowIndex, add) {
+        async function executeInterestWrite(rowIndex, entry) {
             const item = allItems.find(i => i._rowIndex === rowIndex);
             if (!item) return;
 
-            let list = getInterestedList(item);
-            if (add) {
-                if (!list.includes(currentUser.email)) list.push(currentUser.email);
-            } else {
-                list = list.filter(e => e !== currentUser.email);
-            }
-            const newValue = list.join(", ");
+            let list = getInterestedList(item).filter(p => p.email !== currentUser.email);
+            if (entry) list.push(entry);
+
+            const newValue = serializeInterested(list);
             const range = `Sheet1!G${rowIndex}`;
 
             try {
@@ -496,7 +742,7 @@
 
                 if (resp.status === 401) {
                     accessToken = null;
-                    pendingInterest = { rowIndex, add };
+                    pendingWrite = { rowIndex, entry };
                     requestAccessToken();
                     return;
                 }
@@ -562,20 +808,34 @@
 
             let button = "";
             if (iMine) {
-                button = `<button class="claim-btn unclaim" onclick="toggleInterest(${item._rowIndex})">Remove Interest</button>`;
+                button = `<button class="claim-btn unclaim" onclick="openInterestModal(${item._rowIndex})">Update Interest</button>`;
             } else {
-                button = `<button class="claim-btn claim" onclick="toggleInterest(${item._rowIndex})">I'm Interested</button>`;
+                button = `<button class="claim-btn claim" onclick="openInterestModal(${item._rowIndex})">I'm Interested</button>`;
             }
 
             let interestInfo = "";
             if (count > 0) {
                 if (opts.showAllNames) {
+                    const rows = list
+                        .sort((a, b) => (b.importance || 0) - (a.importance || 0))
+                        .map(p => `
+                            <div class="interested-row">
+                                <span class="interested-email">${escapeHtml(p.email)}</span>
+                                <span class="importance-pill imp-${p.importance || 3}">${"★".repeat(p.importance || 3)}</span>
+                                ${p.notes ? `<div class="interested-note">${escapeHtml(p.notes)}</div>` : ""}
+                            </div>
+                        `).join("");
                     interestInfo = `<div class="item-interested">${count} interested</div>
-                        <div class="interested-list">${list.map(e => escapeHtml(e)).join(", ")}</div>`;
-                } else if (iMine && count === 1) {
-                    interestInfo = `<div class="item-interested">You're interested</div>`;
+                        <div class="interested-list">${rows}</div>`;
                 } else if (iMine) {
-                    interestInfo = `<div class="item-interested">You + ${count - 1} other${count > 2 ? "s" : ""} interested</div>`;
+                    const mine = findMine(list);
+                    const mineLabel = `You (${"★".repeat(mine.importance || 3)})`;
+                    if (count === 1) {
+                        interestInfo = `<div class="item-interested">${mineLabel} interested</div>`;
+                        if (mine.notes) interestInfo += `<div class="interested-note">${escapeHtml(mine.notes)}</div>`;
+                    } else {
+                        interestInfo = `<div class="item-interested">${mineLabel} + ${count - 1} other${count > 2 ? "s" : ""} interested</div>`;
+                    }
                 } else {
                     interestInfo = `<div class="item-interested">${count} person${count > 1 ? "s" : ""} interested</div>`;
                 }
