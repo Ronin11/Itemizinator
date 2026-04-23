@@ -31,6 +31,13 @@ SCOPES = [
 
 IMAGE_MIMES = {"image/jpeg", "image/png", "image/heic", "image/heif", "image/webp", "image/bmp", "image/tiff"}
 
+# Gemini 429 backoff schedule (seconds). After these, fall back to Anthropic if configured.
+RETRY_DELAYS = [5, 15, 45]
+
+ANTHROPIC_MODEL = "claude-opus-4-7"
+# Anthropic image input supports JPEG/PNG/GIF/WEBP only.
+ANTHROPIC_SUPPORTED_MIMES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+
 GEMINI_PROMPT = """You are helping catalog household items from an estate.
 Each photo is of ONE specific item someone wants to catalog. Identify the main item
 that is the focus of the photo. Do NOT list background items, furniture the item is
@@ -77,8 +84,13 @@ def get_google_creds():
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+            except Exception as e:
+                print(f"Token refresh failed ({e}); re-authenticating...")
+                token_path.unlink(missing_ok=True)
+                creds = None
+        if not creds or not creds.valid:
             if not creds_path.exists():
                 print("ERROR: credentials.json not found.")
                 print("Download it from Google Cloud Console > APIs & Credentials > OAuth 2.0 Client IDs")
@@ -179,14 +191,11 @@ def ensure_folder_shared(drive, folder_id):
         pass
 
 
-# ---- Gemini ----
+# ---- Model analysis ----
 
-def analyze_image(model, image_bytes, mime_type):
-    """Send image to Gemini and get item description."""
-    image_part = {"mime_type": mime_type, "data": image_bytes}
-    response = model.generate_content([GEMINI_PROMPT, image_part])
-    text = response.text.strip()
-
+def parse_items_response(text):
+    """Parse a JSON-array item list response, tolerating code fences."""
+    text = text.strip()
     if text.startswith("```"):
         lines = text.split("\n")
         lines = [l for l in lines[1:] if not l.strip().startswith("```")]
@@ -197,9 +206,64 @@ def analyze_image(model, image_bytes, mime_type):
         if isinstance(items, list):
             return items
     except json.JSONDecodeError:
-        print(f"  WARNING: Could not parse Gemini response as JSON")
+        print(f"  WARNING: Could not parse model response as JSON")
         print(f"  Response: {text[:200]}")
     return []
+
+
+def analyze_image(model, image_bytes, mime_type, anthropic_client=None):
+    """Gemini path with 5/15/45s backoff on 429; falls back to Anthropic if provided."""
+    image_part = {"mime_type": mime_type, "data": image_bytes}
+
+    for attempt in range(len(RETRY_DELAYS) + 1):
+        try:
+            response = model.generate_content([GEMINI_PROMPT, image_part])
+            return parse_items_response(response.text)
+        except Exception as e:
+            msg = str(e)
+            is_rate_limit = "429" in msg or "Resource exhausted" in msg or "RESOURCE_EXHAUSTED" in msg
+            if not is_rate_limit:
+                raise
+            if attempt < len(RETRY_DELAYS):
+                delay = RETRY_DELAYS[attempt]
+                print(f"rate limited, waiting {delay}s (attempt {attempt + 1}/{len(RETRY_DELAYS)})...", end=" ", flush=True)
+                time.sleep(delay)
+                continue
+            # Gemini retries exhausted — try Anthropic if we have a client
+            if anthropic_client is not None:
+                print("falling back to Anthropic...", end=" ", flush=True)
+                return analyze_image_anthropic(anthropic_client, image_bytes, mime_type)
+            raise
+
+    return []
+
+
+def analyze_image_anthropic(client, image_bytes, mime_type):
+    """Send image to Claude and parse the item-list response."""
+    if mime_type not in ANTHROPIC_SUPPORTED_MIMES:
+        print(f"  WARNING: Anthropic does not support {mime_type}, skipping")
+        return []
+
+    import base64
+    b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+
+    message = client.messages.create(
+        model=ANTHROPIC_MODEL,
+        max_tokens=1024,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": mime_type, "data": b64},
+                },
+                {"type": "text", "text": GEMINI_PROMPT},
+            ],
+        }],
+    )
+
+    text = next((b.text for b in message.content if b.type == "text"), "")
+    return parse_items_response(text)
 
 
 # ---- Google Sheets ----
@@ -313,18 +377,32 @@ def main():
     parser.add_argument("drive_folder_id", help="Google Drive folder ID containing photos")
     parser.add_argument("--force", action="store_true",
                         help="Re-process all photos even if they're already in the sheet")
+    parser.add_argument("--anthropic", action="store_true",
+                        help="Use Anthropic (Claude) instead of Gemini for all photos")
     args = parser.parse_args()
 
     load_env()
 
-    # Set up Gemini
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("ERROR: GEMINI_API_KEY not set. Add it to .env or export it.")
+    # Optional Anthropic client — used as Gemini fallback, or as primary with --anthropic
+    anthropic_client = None
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+    if anthropic_key:
+        from anthropic import Anthropic
+        anthropic_client = Anthropic(api_key=anthropic_key)
+    elif args.anthropic:
+        print("ERROR: --anthropic set but ANTHROPIC_API_KEY is not. Add it to .env or export it.")
         sys.exit(1)
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    # Gemini setup (skipped in Anthropic-only mode)
+    model = None
+    if not args.anthropic:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            print("ERROR: GEMINI_API_KEY not set. Add it to .env or export it.")
+            sys.exit(1)
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-2.0-flash")
 
     # Set up Google APIs
     print("Authenticating with Google...")
@@ -372,7 +450,10 @@ def main():
 
         try:
             image_bytes = download_drive_file(drive, img["id"])
-            items = analyze_image(model, image_bytes, img["mimeType"])
+            if args.anthropic:
+                items = analyze_image_anthropic(anthropic_client, image_bytes, img["mimeType"])
+            else:
+                items = analyze_image(model, image_bytes, img["mimeType"], anthropic_client=anthropic_client)
             photo_url = make_photo_url(img["id"])
 
             for item in items:
@@ -394,8 +475,9 @@ def main():
         except Exception as e:
             print(f"ERROR: {e}")
 
-        # Rate limit: Gemini free tier is 15 RPM
-        time.sleep(4)
+        # Rate limit: Gemini free tier is 15 RPM; skip the sleep in Anthropic-only mode
+        if not args.anthropic:
+            time.sleep(5)
 
         # Batch write every 50 rows
         if len(rows) >= 50 or i == len(image_files):
