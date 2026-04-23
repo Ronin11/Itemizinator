@@ -166,6 +166,247 @@
             margin-bottom: 1rem;
         }
 
+        .rooms-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 1rem;
+        }
+
+        .room-tile {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: box-shadow 0.15s, transform 0.15s;
+            text-align: left;
+            padding: 0;
+            font: inherit;
+            color: inherit;
+            width: 100%;
+        }
+
+        .room-tile:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+
+        .room-tile-photo {
+            width: 100%;
+            height: 160px;
+            object-fit: cover;
+            display: block;
+            background: #f5f5f4;
+        }
+
+        .room-tile-photo-empty {
+            height: 160px;
+            background: #f5f5f4;
+        }
+
+        .room-tile-body { padding: 1rem; }
+        .room-tile-name { font-weight: 600; font-size: 1.05rem; margin-bottom: 0.2rem; }
+        .room-tile-count { color: var(--muted); font-size: 0.85rem; }
+
+        .breadcrumb {
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+        }
+
+        .breadcrumb-link {
+            color: var(--accent);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            font-size: inherit;
+            font-family: inherit;
+        }
+
+        .breadcrumb-link:hover { text-decoration: underline; }
+        .breadcrumb-separator { margin: 0 0.5rem; color: var(--muted); }
+        .breadcrumb-current { color: var(--text); font-weight: 500; }
+
+        /* Search page */
+        .search-panel {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .search-label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+
+        .search-textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .search-textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        .search-textarea:disabled { background: #f5f5f4; color: var(--muted); }
+
+        .search-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 0.75rem;
+        }
+
+        .search-hint { color: var(--muted); font-size: 0.8rem; }
+
+        .search-submit {
+            padding: 0.5rem 1.25rem;
+            border: none;
+            border-radius: 6px;
+            background: var(--accent);
+            color: white;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .search-submit:hover:not(:disabled) { opacity: 0.9; }
+        .search-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .search-status {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: var(--muted);
+            padding: 1.5rem;
+            justify-content: center;
+        }
+
+        .search-spinner {
+            width: 18px;
+            height: 18px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .search-results-header {
+            font-size: 0.9rem;
+            color: var(--muted);
+            margin-bottom: 0.75rem;
+        }
+
+        .search-reason {
+            background: var(--accent-light);
+            color: var(--accent);
+            font-size: 0.8rem;
+            padding: 0.35rem 0.6rem;
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+            line-height: 1.4;
+        }
+
+        .search-results { margin-bottom: 2rem; }
+
+        .search-history-section { margin-top: 2rem; }
+
+        .search-history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .search-history-header h2 { font-size: 1.1rem; font-weight: 600; }
+
+        .search-history-clear {
+            background: none;
+            border: none;
+            color: var(--muted);
+            font-size: 0.8rem;
+            cursor: pointer;
+            padding: 0.25rem 0.5rem;
+        }
+
+        .search-history-clear:hover { color: var(--text); }
+
+        .search-history-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .search-history-item {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            grid-template-rows: auto auto;
+            gap: 0.15rem 0.75rem;
+            padding: 0.75rem 1rem;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: background 0.1s, border-color 0.1s;
+        }
+
+        .search-history-item:hover {
+            background: #fafaf9;
+            border-color: var(--accent);
+        }
+
+        .search-history-query {
+            font-size: 0.9rem;
+            color: var(--text);
+            grid-column: 1;
+            grid-row: 1;
+        }
+
+        .search-history-meta {
+            font-size: 0.75rem;
+            color: var(--muted);
+            grid-column: 1;
+            grid-row: 2;
+        }
+
+        .search-history-remove {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+            align-self: center;
+            background: none;
+            border: none;
+            color: var(--muted);
+            font-size: 1.25rem;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0 0.5rem;
+            border-radius: 4px;
+        }
+
+        .search-history-remove:hover {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
         .item-card {
             background: var(--card);
             border: 1px solid var(--border);
@@ -415,6 +656,8 @@
         @media (max-width: 640px) {
             body { padding: 1rem 0.5rem; }
             .items-grid { grid-template-columns: 1fr; }
+            .rooms-grid { grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+            .room-tile-photo, .room-tile-photo-empty { height: 120px; }
             .controls { flex-direction: column; }
             .controls input[type="text"], .controls select { width: 100%; }
             .nav-tabs { overflow-x: auto; }
@@ -441,7 +684,14 @@
         let tokenClient = null;
         let allItems = [];
         let sheetId = null;
-        let currentPage = "browse"; // browse | my-items | contested
+        let currentPage = "search"; // search | rooms | all-items | my-items | contested
+
+        // Search state (persists across tab switches within the session)
+        let searchQuery = "";
+        let searchResults = null; // null = never searched; [] = no results; [...] = results
+        let searchLoading = false;
+
+        const SEARCH_HISTORY_KEY = "itemizer-search-history";
 
         // ---- Helpers for multi-interest "Claimed By" ----
         // Stored as JSON array: [{email, importance, notes}, ...]
@@ -772,7 +1022,9 @@
 
             return `
                 <div class="nav-tabs">
-                    <button class="nav-tab ${currentPage === 'browse' ? 'active' : ''}" onclick="switchPage('browse')">All Items</button>
+                    <button class="nav-tab ${currentPage === 'search' ? 'active' : ''}" onclick="switchPage('search')">Search</button>
+                    <button class="nav-tab ${currentPage === 'rooms' ? 'active' : ''}" onclick="switchPage('rooms')">Rooms</button>
+                    <button class="nav-tab ${currentPage === 'all-items' ? 'active' : ''}" onclick="switchPage('all-items')">All Items</button>
                     <button class="nav-tab ${currentPage === 'my-items' ? 'active' : ''}" onclick="switchPage('my-items')">
                         My Items${myCount ? `<span class="tab-badge">${myCount}</span>` : ""}
                     </button>
@@ -787,9 +1039,11 @@
 
         function renderPage() {
             if (allItems.length === 0) return;
-            if (currentPage === "my-items") renderMyItems();
+            if (currentPage === "search") renderSearch();
+            else if (currentPage === "my-items") renderMyItems();
             else if (currentPage === "contested") renderContested();
-            else renderBrowse();
+            else if (currentPage === "all-items") renderAllItems();
+            else renderRooms();
         }
 
         // -- Card rendering helper --
@@ -841,10 +1095,15 @@
                 }
             }
 
+            const reasonHtml = opts.reason
+                ? `<div class="search-reason">${escapeHtml(opts.reason)}</div>`
+                : "";
+
             return `
                 <div class="item-card ${cardClass}">
                     ${photoUrl ? `<img class="item-photo" src="${escapeHtml(photoUrl)}=w400" alt="${escapeHtml(item.Item)}" loading="lazy">` : ""}
                     <div class="item-body">
+                        ${reasonHtml}
                         <div class="item-name">${escapeHtml(item.Item)}</div>
                         <div class="item-desc">${escapeHtml(item.Description)}</div>
                         <div class="item-meta">
@@ -863,21 +1122,119 @@
 
         // -- Browse page --
 
-        let browseFilters = { query: "", category: "", location: "" };
+        let browseFilters = { query: "", category: "" };
+        let selectedRoom = null;
 
-        function renderBrowse() {
-            const categories = [...new Set(allItems.map(i => i.Category).filter(Boolean))].sort();
-            const locations = [...new Set(allItems.map(i => i.Location).filter(Boolean))].sort();
+        function topLevelRoom(loc) {
+            if (!loc) return "Unsorted";
+            return loc.split(" / ")[0].trim() || "Unsorted";
+        }
+
+        function openRoom(room) {
+            selectedRoom = room;
+            browseFilters.category = "";
+            renderPage();
+        }
+
+        function backToRooms() {
+            selectedRoom = null;
+            browseFilters.query = "";
+            browseFilters.category = "";
+            renderPage();
+        }
+
+        function renderRooms() {
+            // Room-grid view: no room selected and no active search
+            if (!selectedRoom && !browseFilters.query) {
+                renderRoomGrid();
+            } else {
+                renderRoomItems();
+            }
+        }
+
+        function renderRoomGrid() {
+            const byRoom = new Map();
+            for (const item of allItems) {
+                const room = topLevelRoom(item.Location);
+                if (!byRoom.has(room)) byRoom.set(room, []);
+                byRoom.get(room).push(item);
+            }
+            const rooms = [...byRoom.entries()].sort((a, b) => {
+                // "Unsorted" goes last
+                if (a[0] === "Unsorted") return 1;
+                if (b[0] === "Unsorted") return -1;
+                return a[0].localeCompare(b[0]);
+            });
+
+            const tiles = rooms.map(([room, items]) => {
+                const withPhoto = items.find(i => i.Photo || i["Photo Link"]);
+                const photoUrl = withPhoto ? (withPhoto.Photo || withPhoto["Photo Link"]) : "";
+                const count = items.length;
+                return `
+                    <button class="room-tile" data-room="${escapeHtml(room)}">
+                        ${photoUrl
+                            ? `<img class="room-tile-photo" src="${escapeHtml(photoUrl)}=w400" alt="" loading="lazy">`
+                            : `<div class="room-tile-photo-empty"></div>`}
+                        <div class="room-tile-body">
+                            <div class="room-tile-name">${escapeHtml(room)}</div>
+                            <div class="room-tile-count">${count} item${count !== 1 ? "s" : ""}</div>
+                        </div>
+                    </button>
+                `;
+            }).join("");
 
             app.innerHTML = `
                 ${renderNav()}
                 <div class="controls">
-                    <input type="text" id="search" placeholder="Search items..." value="${escapeHtml(browseFilters.query)}">
-                    ${locations.length > 0 ? `
-                    <select id="location-filter">
-                        <option value="">All Locations</option>
-                        ${locations.map(l => `<option value="${escapeHtml(l)}" ${browseFilters.location === l ? "selected" : ""}>${escapeHtml(l)}</option>`).join("")}
-                    </select>` : ""}
+                    <input type="text" id="search" placeholder="Search across all rooms...">
+                </div>
+                <div class="stats">${allItems.length} items in ${rooms.length} room${rooms.length !== 1 ? "s" : ""} \u00b7 Pick a room to browse</div>
+                <div class="rooms-grid">${tiles}</div>
+            `;
+
+            const searchInput = document.getElementById("search");
+            searchInput.addEventListener("input", () => {
+                browseFilters.query = searchInput.value;
+                if (browseFilters.query) {
+                    renderPage();
+                    const newInput = document.getElementById("search");
+                    if (newInput) {
+                        newInput.focus();
+                        newInput.setSelectionRange(newInput.value.length, newInput.value.length);
+                    }
+                }
+            });
+
+            app.querySelectorAll(".room-tile").forEach(tile => {
+                tile.addEventListener("click", () => openRoom(tile.dataset.room));
+            });
+        }
+
+        function renderRoomItems() {
+            // Filter scope: selectedRoom (if set) + search (if set)
+            const scopeItems = selectedRoom
+                ? allItems.filter(i => topLevelRoom(i.Location) === selectedRoom)
+                : allItems;
+
+            const categories = [...new Set(scopeItems.map(i => i.Category).filter(Boolean))].sort();
+
+            const breadcrumb = selectedRoom
+                ? `<div class="breadcrumb">
+                       <button class="breadcrumb-link" id="back-to-rooms">All Rooms</button>
+                       <span class="breadcrumb-separator">/</span>
+                       <span class="breadcrumb-current">${escapeHtml(selectedRoom)}</span>
+                   </div>`
+                : `<div class="breadcrumb">
+                       <button class="breadcrumb-link" id="back-to-rooms">All Rooms</button>
+                       <span class="breadcrumb-separator">/</span>
+                       <span class="breadcrumb-current">Search</span>
+                   </div>`;
+
+            app.innerHTML = `
+                ${renderNav()}
+                ${breadcrumb}
+                <div class="controls">
+                    <input type="text" id="search" placeholder="Search${selectedRoom ? ` in ${selectedRoom}` : " items"}..." value="${escapeHtml(browseFilters.query)}">
                     <select id="category-filter">
                         <option value="">All Categories</option>
                         ${categories.map(c => `<option value="${escapeHtml(c)}" ${browseFilters.category === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}
@@ -890,18 +1247,17 @@
             const container = document.getElementById("items-container");
             const searchInput = document.getElementById("search");
             const categoryFilter = document.getElementById("category-filter");
-            const locationFilter = document.getElementById("location-filter");
             const stats = document.getElementById("stats");
+
+            document.getElementById("back-to-rooms").addEventListener("click", backToRooms);
 
             function render() {
                 browseFilters.query = searchInput.value;
                 browseFilters.category = categoryFilter.value;
-                browseFilters.location = locationFilter ? locationFilter.value : "";
                 const query = browseFilters.query.toLowerCase();
 
-                let filtered = allItems.filter(item => {
+                let filtered = scopeItems.filter(item => {
                     if (browseFilters.category && item.Category !== browseFilters.category) return false;
-                    if (browseFilters.location && item.Location !== browseFilters.location) return false;
                     if (query) {
                         const s = `${item.Item} ${item.Description} ${item.Category} ${item.Location || ""}`.toLowerCase();
                         if (!s.includes(query)) return false;
@@ -915,10 +1271,288 @@
                 container.innerHTML = `<div class="items-grid">${filtered.map(i => renderCard(i, { contestedHighlight: true })).join("")}</div>`;
             }
 
+            searchInput.addEventListener("input", () => {
+                if (!searchInput.value && !selectedRoom) {
+                    browseFilters.query = "";
+                    renderPage();
+                    return;
+                }
+                render();
+            });
+            categoryFilter.addEventListener("change", render);
+            render();
+        }
+
+        // -- All Items page (flat list with filters) --
+
+        let allItemsFilters = { query: "", category: "", location: "" };
+
+        function renderAllItems() {
+            const categories = [...new Set(allItems.map(i => i.Category).filter(Boolean))].sort();
+            const locations = [...new Set(allItems.map(i => i.Location).filter(Boolean))].sort();
+
+            app.innerHTML = `
+                ${renderNav()}
+                <div class="controls">
+                    <input type="text" id="ai-search" placeholder="Search items..." value="${escapeHtml(allItemsFilters.query)}">
+                    ${locations.length > 0 ? `
+                    <select id="ai-location-filter">
+                        <option value="">All Locations</option>
+                        ${locations.map(l => `<option value="${escapeHtml(l)}" ${allItemsFilters.location === l ? "selected" : ""}>${escapeHtml(l)}</option>`).join("")}
+                    </select>` : ""}
+                    <select id="ai-category-filter">
+                        <option value="">All Categories</option>
+                        ${categories.map(c => `<option value="${escapeHtml(c)}" ${allItemsFilters.category === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}
+                    </select>
+                </div>
+                <div class="stats" id="ai-stats"></div>
+                <div id="ai-items-container"></div>
+            `;
+
+            const container = document.getElementById("ai-items-container");
+            const searchInput = document.getElementById("ai-search");
+            const categoryFilter = document.getElementById("ai-category-filter");
+            const locationFilter = document.getElementById("ai-location-filter");
+            const stats = document.getElementById("ai-stats");
+
+            function render() {
+                allItemsFilters.query = searchInput.value;
+                allItemsFilters.category = categoryFilter.value;
+                allItemsFilters.location = locationFilter ? locationFilter.value : "";
+                const query = allItemsFilters.query.toLowerCase();
+
+                let filtered = allItems.filter(item => {
+                    if (allItemsFilters.category && item.Category !== allItemsFilters.category) return false;
+                    if (allItemsFilters.location && item.Location !== allItemsFilters.location) return false;
+                    if (query) {
+                        const s = `${item.Item} ${item.Description} ${item.Category} ${item.Location || ""}`.toLowerCase();
+                        if (!s.includes(query)) return false;
+                    }
+                    return true;
+                });
+
+                const ic = filtered.filter(i => interestCount(i) > 0).length;
+                stats.textContent = `${filtered.length} items · ${ic} with interest · ${filtered.length - ic} available`;
+                container.innerHTML = `<div class="items-grid">${filtered.map(i => renderCard(i, { contestedHighlight: true })).join("")}</div>`;
+            }
+
             searchInput.addEventListener("input", render);
             categoryFilter.addEventListener("change", render);
             if (locationFilter) locationFilter.addEventListener("change", render);
             render();
+        }
+
+        // -- Search page (LLM-powered) --
+
+        function loadSearchHistory() {
+            try {
+                const raw = localStorage.getItem(SEARCH_HISTORY_KEY);
+                return raw ? JSON.parse(raw) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function saveSearchHistory(history) {
+            try {
+                localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history));
+            } catch (e) { /* quota exceeded — ignore */ }
+        }
+
+        function addToSearchHistory(query, resultCount) {
+            const history = loadSearchHistory().filter(h => h.query !== query);
+            history.unshift({ query, resultCount, timestamp: Date.now() });
+            saveSearchHistory(history.slice(0, 20));
+        }
+
+        function removeFromSearchHistory(query) {
+            saveSearchHistory(loadSearchHistory().filter(h => h.query !== query));
+        }
+
+        function clearSearchHistory() {
+            saveSearchHistory([]);
+        }
+
+        async function runLLMSearch(query) {
+            if (typeof SEARCH_URL !== "undefined" && SEARCH_URL) {
+                return await remoteLLMSearch(query);
+            }
+            return await mockLLMSearch(query);
+        }
+
+        // Calls the Apps Script Web App. Sends text/plain to avoid CORS preflight.
+        async function remoteLLMSearch(query) {
+            const resp = await fetch(SEARCH_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify({ query }),
+                redirect: "follow",
+            });
+
+            if (!resp.ok) throw new Error(`Search failed (${resp.status})`);
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+
+            const byRow = new Map(allItems.map(i => [i._rowIndex, i]));
+            return (data.results || [])
+                .map(r => ({ item: byRow.get(r.rowIndex), reason: r.reason }))
+                .filter(r => r.item);
+        }
+
+        // Fallback mock — used until SEARCH_URL is configured.
+        async function mockLLMSearch(query) {
+            await new Promise(r => setTimeout(r, 1000 + Math.random() * 800));
+
+            const q = query.toLowerCase();
+            const scored = allItems.map(item => {
+                const hay = `${item.Item} ${item.Description} ${item.Category} ${item.Location || ""} ${item.Notes || ""}`.toLowerCase();
+                let score = 0;
+                for (const tok of q.split(/\s+/).filter(t => t.length > 2)) {
+                    if (hay.includes(tok)) score += 1;
+                }
+                return { item, score };
+            });
+
+            scored.sort((a, b) => b.score - a.score);
+            const topN = Math.min(8, allItems.length);
+            let pool = scored.slice(0, topN).filter(s => s.score > 0);
+            if (pool.length < 5) {
+                const extras = [...allItems].sort(() => Math.random() - 0.5).slice(0, 5 - pool.length);
+                pool = pool.concat(extras.map(item => ({ item, score: 0 })));
+            }
+
+            return pool.map(({ item }) => ({ item, reason: mockReason(item, query) }));
+        }
+
+        function mockReason(item, query) {
+            const templates = [
+                `Matches "${query}" — ${item.Item.toLowerCase()} fits the description.`,
+                `Likely relevant: ${item.Category.toLowerCase()} in ${item.Location || "the house"}.`,
+                `"${query}" could match this ${item.Category.toLowerCase()}${item.Condition ? ` (${item.Condition.toLowerCase()} condition)` : ""}.`,
+                `Possible fit — ${item.Description ? item.Description.slice(0, 80) : item.Item}.`,
+            ];
+            return templates[Math.floor(Math.random() * templates.length)];
+        }
+
+        async function performSearch(query) {
+            query = query.trim();
+            if (!query) return;
+
+            searchQuery = query;
+            searchLoading = true;
+            searchResults = null;
+            renderPage();
+
+            try {
+                const results = await runLLMSearch(query);
+                searchResults = results;
+                addToSearchHistory(query, results.length);
+            } catch (err) {
+                searchResults = [];
+                alert(`Search failed: ${err.message}`);
+            } finally {
+                searchLoading = false;
+                renderPage();
+            }
+        }
+
+        function renderSearch() {
+            const history = loadSearchHistory();
+
+            let resultsSection = "";
+            if (searchLoading) {
+                resultsSection = `<div class="search-status"><div class="search-spinner"></div>Searching for "${escapeHtml(searchQuery)}"...</div>`;
+            } else if (searchResults !== null) {
+                if (searchResults.length === 0) {
+                    resultsSection = `<div class="empty-state">No matches for "${escapeHtml(searchQuery)}".</div>`;
+                } else {
+                    resultsSection = `
+                        <div class="search-results-header">${searchResults.length} match${searchResults.length !== 1 ? "es" : ""} for "${escapeHtml(searchQuery)}"</div>
+                        <div class="items-grid">
+                            ${searchResults.map(r => renderCard(r.item, { contestedHighlight: true, reason: r.reason })).join("")}
+                        </div>
+                    `;
+                }
+            }
+
+            const historySection = history.length === 0
+                ? `<div class="empty-state" style="padding:1.5rem">No searches yet. Try describing what you're looking for above.</div>`
+                : `
+                    <div class="search-history-header">
+                        <h2 class="section-heading" style="border:none;margin:0;padding:0">Recent searches</h2>
+                        <button class="search-history-clear" id="clear-history">Clear all</button>
+                    </div>
+                    <ul class="search-history-list">
+                        ${history.map(h => `
+                            <li class="search-history-item" data-query="${escapeHtml(h.query)}">
+                                <div class="search-history-query">${escapeHtml(h.query)}</div>
+                                <div class="search-history-meta">${h.resultCount} result${h.resultCount !== 1 ? "s" : ""} · ${formatRelativeTime(h.timestamp)}</div>
+                                <button class="search-history-remove" data-query="${escapeHtml(h.query)}" title="Remove">×</button>
+                            </li>
+                        `).join("")}
+                    </ul>
+                `;
+
+            app.innerHTML = `
+                ${renderNav()}
+                <div class="search-panel">
+                    <label for="search-prompt" class="search-label">Describe what you're looking for</label>
+                    <textarea id="search-prompt" class="search-textarea" rows="3" placeholder="e.g. small decorative items good for a reading nook, or kitchen gadgets for someone who bakes a lot..." ${searchLoading ? "disabled" : ""}>${escapeHtml(searchQuery)}</textarea>
+                    <div class="search-actions">
+                        <span class="search-hint">Cmd/Ctrl+Enter to submit</span>
+                        <button class="search-submit" id="submit-search" ${searchLoading ? "disabled" : ""}>${searchLoading ? "Searching..." : "Search"}</button>
+                    </div>
+                </div>
+                <div class="search-results" id="search-results-container">${resultsSection}</div>
+                <div class="search-history-section">${historySection}</div>
+            `;
+
+            const textarea = document.getElementById("search-prompt");
+            const submitBtn = document.getElementById("submit-search");
+
+            submitBtn.addEventListener("click", () => performSearch(textarea.value));
+            textarea.addEventListener("keydown", (e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                    e.preventDefault();
+                    performSearch(textarea.value);
+                }
+            });
+            textarea.addEventListener("input", () => { searchQuery = textarea.value; });
+
+            // Focus textarea only on fresh entry (no prior search, not loading)
+            if (!searchLoading && searchResults === null && !searchQuery) {
+                textarea.focus();
+            }
+
+            // History interactions
+            const clearBtn = document.getElementById("clear-history");
+            if (clearBtn) clearBtn.addEventListener("click", () => {
+                if (confirm("Clear all search history?")) { clearSearchHistory(); renderPage(); }
+            });
+
+            app.querySelectorAll(".search-history-remove").forEach(btn => {
+                btn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    removeFromSearchHistory(btn.dataset.query);
+                    renderPage();
+                });
+            });
+
+            app.querySelectorAll(".search-history-item").forEach(li => {
+                li.addEventListener("click", () => performSearch(li.dataset.query));
+            });
+        }
+
+        function formatRelativeTime(ts) {
+            const diff = Date.now() - ts;
+            const mins = Math.floor(diff / 60000);
+            if (mins < 1) return "just now";
+            if (mins < 60) return `${mins}m ago`;
+            const hrs = Math.floor(mins / 60);
+            if (hrs < 24) return `${hrs}h ago`;
+            const days = Math.floor(hrs / 24);
+            if (days < 7) return `${days}d ago`;
+            return new Date(ts).toLocaleDateString();
         }
 
         // -- My Items page --

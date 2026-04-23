@@ -8,3 +8,9 @@ const GOOGLE_CLIENT_ID = "394650427422-fo3mof852bdl7edml55539vjdjs4v3t6.apps.goo
 
 // Optional: customize the page title
 const SHEET_NAME = "Grandma's Estate Items";
+
+// Apps Script Web App /exec URL that powers the LLM search tab.
+// Get it from: Apps Script editor > Deploy > New Deployment > Web App > copy URL
+// Looks like: https://script.google.com/macros/s/AKfyc.../exec
+// Leave empty ("") to keep the search tab on the mock responses.
+const SEARCH_URL = "https://script.google.com/macros/s/AKfycbyJAC3SRGpC1t3OtAzIe5AkzlEPqDvCIj43geR6Y6ff8uKA9rY302x1dRdNHLIUGNRDFg/exec";
