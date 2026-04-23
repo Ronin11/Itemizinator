@@ -13,4 +13,4 @@ const SHEET_NAME = "Grandma's Estate Items";
 // Get it from: Apps Script editor > Deploy > New Deployment > Web App > copy URL
 // Looks like: https://script.google.com/macros/s/AKfyc.../exec
 // Leave empty ("") to keep the search tab on the mock responses.
-const SEARCH_URL = "https://script.google.com/macros/s/AKfycbxAzh5teFTDz3DWOHq-9PWbsOYUH01T0hyzKsseB0dZPQyt3ZG62EAIdu-FLvoQXt3Z8w/exec";
+const SEARCH_URL = "https://script.google.com/macros/s/AKfycbynb_s4FS5ONX9I753Z27cxHE_W9YYLuWKMMFc4wiqW_7eIGMEtsXev4cQhZTZmvR4OeA/exec";
