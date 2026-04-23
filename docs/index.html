@@ -681,6 +681,7 @@
 
         let currentUser = null;
         let accessToken = null;
+        let idToken = null;
         let tokenClient = null;
         let allItems = [];
         let sheetId = null;
@@ -754,6 +755,7 @@
         }
 
         function handleIdToken(response) {
+            idToken = response.credential;
             const payload = JSON.parse(atob(response.credential.split(".")[1]));
             currentUser = {
                 email: payload.email,
@@ -796,6 +798,7 @@
         function signOut() {
             currentUser = null;
             accessToken = null;
+            idToken = null;
             allItems = [];
             currentPage = "browse";
             google.accounts.id.disableAutoSelect();
@@ -1382,10 +1385,12 @@
 
         // Calls the Apps Script Web App. Sends text/plain to avoid CORS preflight.
         async function remoteLLMSearch(query) {
+            if (!idToken) throw new Error("Sign in with Google to use search.");
+
             const resp = await fetch(SEARCH_URL, {
                 method: "POST",
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: JSON.stringify({ query }),
+                body: JSON.stringify({ query, id_token: idToken }),
                 redirect: "follow",
             });
 
